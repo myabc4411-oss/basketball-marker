@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏀 농구 슛 마커</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:        #0a0a0f;
+    --surface:   #13131a;
+    --border:    #222230;
+    --made:      #00e87a;
+    --missed:    #ff3b3b;
+    --accent:    #f5a623;
+    --in-pt:     #00c8ff;
+    --text:      #e8e8f0;
+    --muted:     #555570;
+    --bar-h:     12px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Sans KR', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── 업로드 화면 ── */
+  #upload-screen {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+  }
+
+  .upload-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 2rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--accent);
+  }
+
+  .upload-sub {
+    color: var(--muted);
+    font-size: 0.9rem;
+    letter-spacing: 0.05em;
+  }
+
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 16px;
+    width: 480px;
+    height: 200px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: #1a1a10; }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-icon { font-size: 2.5rem; }
+  .upload-label { font-size: 0.95rem; color: var(--muted); }
+  .upload-note  { font-size: 0.78rem; color: #333348; font-family: 'IBM Plex Mono', monospace; }
+
+  /* ── 메인 에디터 ── */
+  #editor { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+
+  /* 상단 바 */
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    flex-shrink: 0;
+  }
+  .tb-title { color: var(--accent); font-weight: 700; font-size: 0.9rem; }
+  .tb-time  { color: var(--text); font-size: 0.88rem; }
+  .tb-speed { color: var(--in-pt); }
+  .tb-sep   { color: var(--border); }
+  .tb-counts { display: flex; gap: 16px; margin-left: auto; }
+  .cnt-made   { color: var(--made); }
+  .cnt-missed { color: var(--missed); }
+
+  /* 비디오 영역 */
+  #video-wrap {
+    flex: 1;
+    position: relative;
+    background: #000;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 0;
+  }
+
+  #video {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+  }
+
+  /* 플래시 메시지 */
+  #flash {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 2rem;
+    font-weight: 700;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+    text-shadow: 0 2px 20px rgba(0,0,0,0.8);
+    white-space: nowrap;
+  }
+  #flash.show { opacity: 1; }
+
+  /* IN점 오버레이 */
+  #in-overlay {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 200, 255, 0.15);
+    border: 1px solid var(--in-pt);
+    border-radius: 6px;
+    padding: 4px 14px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--in-pt);
+    display: none;
+  }
+
+  /* ── 진행바 영역 ── */
+  #timeline-wrap {
+    padding: 10px 16px 6px;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  #timeline {
+    position: relative;
+    height: var(--bar-h);
+    background: #1e1e2e;
+    border-radius: 6px;
+    cursor: pointer;
+    overflow: visible;
+  }
+
+  #tl-progress {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: var(--accent);
+    opacity: 0.35;
+    border-radius: 6px;
+    pointer-events: none;
+  }
+
+  #tl-cursor {
+    position: absolute;
+    top: -5px;
+    width: 3px;
+    height: calc(var(--bar-h) + 10px);
+    background: #fff;
+    border-radius: 2px;
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .tl-marker {
+    position: absolute;
+    top: 0; bottom: 0;
+    pointer-events: none;
+    border-radius: 3px;
+    opacity: 0.75;
+  }
+
+  #tl-in-cursor {
+    position: absolute;
+    top: -7px;
+    width: 3px;
+    height: calc(var(--bar-h) + 14px);
+    background: var(--in-pt);
+    border-radius: 2px;
+    transform: translateX(-50%);
+    pointer-events: none;
+    display: none;
+    box-shadow: 0 0 6px var(--in-pt);
+  }
+
+  #tl-tooltip {
+    position: absolute;
+    bottom: calc(var(--bar-h) + 8px);
+    background: #222;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--text);
+    pointer-events: none;
+    display: none;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  /* ── 하단 컨트롤 ── */
+  #controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px 10px;
+    background: var(--surface);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.72rem;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 5px;
+    padding: 5px 10px;
+    cursor: default;
+    white-space: nowrap;
+  }
+  .btn span { color: var(--text); font-weight: 600; }
+  .btn.made   { border-color: var(--made);   color: var(--made); }
+  .btn.missed { border-color: var(--missed); color: var(--missed); }
+  .btn.save   { border-color: var(--accent); color: var(--accent); margin-left: auto; }
+  .btn.cancel { border-color: #444; color: #777; }
+
+  .sep { width: 1px; height: 20px; background: var(--border); }
+
+  /* ── 설정 패널 ── */
+  #settings-panel {
+    display: none; position: fixed; inset: 0; z-index: 100;
+    background: rgba(8,8,16,.88); backdrop-filter: blur(8px);
+    align-items: center; justify-content: center;
+  }
+  #settings-panel.open { display: flex; }
+  .sp-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; width: 460px; max-height: 80vh;
+    overflow-y: auto; padding: 24px;
+  }
+  .sp-title {
+    font-family: 'IBM Plex Mono', monospace; font-size: 1rem; font-weight: 700;
+    color: var(--accent); margin-bottom: 18px;
+  }
+  .sp-sec-title {
+    font-family: 'IBM Plex Mono', monospace; font-size: .68rem; font-weight: 600;
+    color: var(--muted); letter-spacing: .1em; text-transform: uppercase;
+    margin: 14px 0 8px;
+  }
+  .sp-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 0; border-bottom: 1px solid var(--border);
+  }
+  .sp-row:last-child { border-bottom: none; }
+  .sp-label { font-size: .83rem; color: var(--text); }
+  .sp-key-input {
+    background: #1a1a28; border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 12px;
+    font-family: 'IBM Plex Mono', monospace; font-size: .82rem; font-weight: 700;
+    color: var(--accent); text-align: center; width: 90px;
+    cursor: pointer; outline: none; caret-color: transparent;
+  }
+  .sp-key-input.listening {
+    border-color: var(--accent); color: #fff;
+    box-shadow: 0 0 0 2px rgba(245,166,35,.25);
+  }
+  .sp-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .sp-btn {
+    padding: 6px 18px; border-radius: 7px;
+    font-family: 'IBM Plex Mono', monospace; font-size: .78rem; font-weight: 700;
+    cursor: pointer; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); transition: all .15s;
+  }
+  .sp-btn.primary { background: var(--accent); border: none; color: #000; }
+  .sp-btn:hover { color: var(--text); }
+</style>
+</head>
+<body>
+
+<!-- ── 업로드 화면 ── -->
+<div id="upload-screen">
+  <div class="upload-title">🏀 농구 슛 마커</div>
+  <div class="upload-sub">영상을 업로드하고 키보드로 슛을 마킹하세요</div>
+  <div class="upload-zone" id="drop-zone">
+    <input type="file" id="file-input" accept="video/*">
+    <div class="upload-icon">📂</div>
+    <div class="upload-label">클릭하거나 영상 파일을 드래그하세요</div>
+    <div class="upload-note">MP4 권장 · MOV · AVI · MKV 지원</div>
+  </div>
+</div>
+
+<!-- ── 에디터 ── -->
+<div id="editor">
+
+  <div id="topbar">
+    <span class="tb-title">🏀 SHOT MARKER</span>
+    <span class="tb-sep">|</span>
+    <span class="tb-time" id="tb-time">0.0s / 0.0s</span>
+    <span class="tb-sep">|</span>
+    <span class="tb-speed" id="tb-speed">x1.0</span>
+    <span class="tb-sep">|</span>
+    <span id="tb-filename" style="color:var(--muted);"></span>
+    <div class="tb-counts">
+      <span class="cnt-made"   id="cnt-made">🟢 성공: 0</span>
+      <span class="cnt-missed" id="cnt-missed">🔴 실패: 0</span>
+      <button id="btn-settings" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:0 4px;" title="키보드 설정">⚙</button>
+    </div>
+  </div>
+
+  <div id="video-wrap">
+    <video id="video" preload="auto"></video>
+    <div id="flash"></div>
+    <div id="in-overlay">📍 IN점 지정됨 — A 또는 X 로 확정</div>
+  </div>
+
+  <div id="timeline-wrap">
+    <div id="timeline">
+      <div id="tl-progress"></div>
+      <div id="tl-cursor"></div>
+      <div id="tl-in-cursor"></div>
+      <div id="tl-tooltip"></div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <div class="btn"><span id="lbl-play">Space</span> 재생/정지</div>
+    <div class="btn"><span id="lbl-back">J</span> -3초</div>
+    <div class="btn"><span id="lbl-fwd">L</span> +3초</div>
+    <div class="btn"><span id="lbl-slower">[</span><span id="lbl-faster">]</span> 배속</div>
+    <div class="sep"></div>
+    <div class="btn"><span id="lbl-in">I</span> IN점 지정</div>
+    <div class="btn made"><span id="lbl-made">A</span> 슛 성공</div>
+    <div class="btn missed"><span id="lbl-missed">X</span> 슛 실패</div>
+    <div class="btn cancel"><span id="lbl-undo">Z</span> 취소</div>
+    <div class="btn cancel">Shift+<span id="lbl-redo">Z</span> 복구</div>
+    <div class="sep"></div>
+    <div class="btn save" id="btn-save"><span id="lbl-save">S</span> EDL 저장</div>
+  </div>
+
+</div>
+
+<!-- ── 설정 패널 ── -->
+<div id="settings-panel">
+  <div class="sp-box">
+    <div class="sp-title">⚙ 키보드 커스텀</div>
+
+    <div class="sp-sec-title">재생 컨트롤</div>
+    <div class="sp-row">
+      <div class="sp-label">재생 / 정지</div>
+      <input class="sp-key-input" data-action="play" readonly value="Space">
+    </div>
+    <div class="sp-row">
+      <div class="sp-label">뒤로 3초</div>
+      <input class="sp-key-input" data-action="back" readonly value="j">
+    </div>
+    <div class="sp-row">
+      <div class="sp-label">앞으로 3초</div>
+      <input class="sp-key-input" data-action="fwd" readonly value="l">
+    </div>
+    <div class="sp-row">
+      <div class="sp-label">배속 내리기</div>
+      <input class="sp-key-input" data-action="slower" readonly value="[">
+    </div>
+    <div class="sp-row">
+      <div class="sp-label">배속 올리기</div>
+      <input class="sp-key-input" data-action="faster" readonly value="]">
+    </div>
+
+    <div class="sp-sec-title">마킹</div>
+    <div class="sp-row">
+      <div class="sp-label">IN점 지정</div>
+      <input class="sp-key-input" data-action="in" readonly value="i">
+    </div>
+    <div class="sp-row">
+      <div class="sp-label">슛 성공</div>
+      <input class="sp-key-input" data-action="made" readonly value="a">
+    </div>
+    <div class="sp-row">
+      <div class="sp-label">슛 실패</div>
+      <input class="sp-key-input" data-action="missed" readonly value="x">
+    </div>
+    <div class="sp-row">
+      <div class="sp-label">취소 (Undo)</div>
+      <input class="sp-key-input" data-action="undo" readonly value="z">
+    </div>
+    <div class="sp-row">
+      <div class="sp-label">EDL 저장</div>
+      <input class="sp-key-input" data-action="save" readonly value="s">
+    </div>
+
+    <div class="sp-footer">
+      <button class="sp-btn" id="sp-cancel">취소</button>
+      <button class="sp-btn primary" id="sp-save">저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// 설정
+// ==========================================
+const PRE_SECONDS = 3.0;
+const SPEEDS      = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 8.0];
+const SEEK_SEC    = 3;
+
+// ==========================================
+// 상태
+// ==========================================
+let madeEvents   = [];   // { in, out }
+let missedEvents = [];
+let allMarkers   = [];   // { type, in, out }
+let redoStack    = [];   // undo된 마커 보관
+
+let speedIdx  = 2;   // 기본 1.0x
+let pendingIn = null;
+let fileName  = "";
+let duration  = 0;
+
+let flashTimer = null;
+
+// ==========================================
+// 키 설정
+// ==========================================
+let KEYS = {
+  play:   ' ',
+  back:   'j',
+  fwd:    'l',
+  slower: '[',
+  faster: ']',
+  in:     'i',
+  made:   'a',
+  missed: 'x',
+  undo:   'z',
+  save:   's',
+};
+
+const settPanel = document.getElementById('settings-panel');
+let _keyHandler = null;
+
+document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('sp-cancel').addEventListener('click', closeSettings);
+document.getElementById('sp-save').addEventListener('click', saveSettings);
+
+function openSettings() {
+  document.querySelectorAll('.sp-key-input').forEach(inp => {
+    const v = KEYS[inp.dataset.action];
+    inp.value = v === ' ' ? 'Space' : v.toUpperCase();
+  });
+  settPanel.classList.add('open');
+  setupKeyListeners();
+}
+
+function closeSettings() {
+  document.querySelectorAll('.sp-key-input').forEach(i => i.classList.remove('listening'));
+  if (_keyHandler) { document.removeEventListener('keydown', _keyHandler); _keyHandler = null; }
+  settPanel.classList.remove('open');
+}
+
+function setupKeyListeners() {
+  if (_keyHandler) document.removeEventListener('keydown', _keyHandler);
+  document.querySelectorAll('.sp-key-input').forEach(inp => {
+    inp.onclick = () => {
+      document.querySelectorAll('.sp-key-input').forEach(i => i.classList.remove('listening'));
+      inp.classList.add('listening');
+      inp.value = '키를 누르세요...';
+    };
+  });
+  _keyHandler = function(e) {
+    if (!settPanel.classList.contains('open')) return;
+    const listening = document.querySelector('.sp-key-input.listening');
+    if (!listening) return;
+    e.preventDefault(); e.stopPropagation();
+    const display = e.key === ' ' ? 'Space' : e.key.toUpperCase();
+    listening.value = display;
+    listening.dataset.pending = e.key;
+    listening.classList.remove('listening');
+  };
+  document.addEventListener('keydown', _keyHandler);
+}
+
+function saveSettings() {
+  document.querySelectorAll('.sp-key-input').forEach(inp => {
+    const raw = inp.dataset.pending || inp.value;
+    KEYS[inp.dataset.action] = raw === 'Space' || raw === 'SPACE' ? ' ' : raw.toLowerCase();
+    delete inp.dataset.pending;
+  });
+  updateCtrlLabels();
+  closeSettings();
+  flash('✅ 설정 저장됨', 'var(--accent)');
+}
+
+function updateCtrlLabels() {
+  const fmt = k => k === ' ' ? 'Space' : k.toUpperCase();
+  document.getElementById('lbl-play').textContent   = fmt(KEYS.play);
+  document.getElementById('lbl-back').textContent   = fmt(KEYS.back);
+  document.getElementById('lbl-fwd').textContent    = fmt(KEYS.fwd);
+  document.getElementById('lbl-slower').textContent = fmt(KEYS.slower);
+  document.getElementById('lbl-faster').textContent = fmt(KEYS.faster);
+  document.getElementById('lbl-in').textContent     = fmt(KEYS.in);
+  document.getElementById('lbl-made').textContent   = fmt(KEYS.made);
+  document.getElementById('lbl-missed').textContent = fmt(KEYS.missed);
+  document.getElementById('lbl-undo').textContent   = fmt(KEYS.undo);
+  document.getElementById('lbl-redo').textContent   = fmt(KEYS.undo);
+  document.getElementById('lbl-save').textContent   = fmt(KEYS.save);
+}
+
+
+function saveSession() {
+  try {
+    sessionStorage.setItem('bm_made',     JSON.stringify(madeEvents));
+    sessionStorage.setItem('bm_missed',   JSON.stringify(missedEvents));
+    sessionStorage.setItem('bm_markers',  JSON.stringify(allMarkers));
+    sessionStorage.setItem('bm_filename', fileName);
+  } catch(e) {}
+}
+
+function loadSession() {
+  try {
+    madeEvents   = JSON.parse(sessionStorage.getItem('bm_made')    || '[]');
+    missedEvents = JSON.parse(sessionStorage.getItem('bm_missed')  || '[]');
+    allMarkers   = JSON.parse(sessionStorage.getItem('bm_markers') || '[]');
+  } catch(e) {}
+}
+
+
+const video      = document.getElementById('video');
+const fileInput  = document.getElementById('file-input');
+const dropZone   = document.getElementById('drop-zone');
+const uploadScr  = document.getElementById('upload-screen');
+const editor     = document.getElementById('editor');
+
+function loadFile(file) {
+  if (!file) return;
+  fileName = file.name;
+  const url = URL.createObjectURL(file);
+  video.src = url;
+  video.load();
+  video.onloadedmetadata = () => {
+    duration = video.duration;
+    uploadScr.style.display = 'none';
+    editor.style.display    = 'flex';
+    document.getElementById('tb-filename').textContent = fileName;
+    video.playbackRate = SPEEDS[speedIdx];
+
+    // 같은 파일이면 세션 복구
+    const prevFn = sessionStorage.getItem('bm_filename');
+    if (prevFn === fileName) {
+      loadSession();
+      renderMarkers();
+      const total = madeEvents.length + missedEvents.length;
+      if (total) flash(`↪ 이전 작업 복구 (성공${madeEvents.length} 실패${missedEvents.length})`, 'var(--in-pt)');
+    } else {
+      sessionStorage.clear();
+      saveSession();
+    }
+
+    updateUI();
+    video.play();
+  };
+}
+
+fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag');
+  loadFile(e.dataTransfer.files[0]);
+});
+
+// ==========================================
+// 진행바
+// ==========================================
+const timeline  = document.getElementById('timeline');
+const tlProg    = document.getElementById('tl-progress');
+const tlCursor  = document.getElementById('tl-cursor');
+const tlInCur   = document.getElementById('tl-in-cursor');
+const tlTooltip = document.getElementById('tl-tooltip');
+
+function pct(t) { return duration ? (t / duration * 100) : 0; }
+
+function updateTimeline() {
+  const p = pct(video.currentTime);
+  tlProg.style.width = p + '%';
+  tlCursor.style.left = p + '%';
+
+  if (pendingIn !== null) {
+    tlInCur.style.left    = pct(pendingIn) + '%';
+    tlInCur.style.display = 'block';
+  } else {
+    tlInCur.style.display = 'none';
+  }
+}
+
+function renderMarkers() {
+  document.querySelectorAll('.tl-marker').forEach(el => el.remove());
+  for (const m of allMarkers) {
+    const el = document.createElement('div');
+    el.className = 'tl-marker';
+    el.style.left       = pct(m.in)  + '%';
+    el.style.width      = pct(m.out - m.in) + '%';
+    el.style.background = m.type === 'made' ? 'var(--made)' : 'var(--missed)';
+    timeline.appendChild(el);
+  }
+}
+
+// 진행바 클릭/드래그
+let tlDragging = false;
+
+function seekFromMouse(e) {
+  const rect  = timeline.getBoundingClientRect();
+  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+  video.currentTime = ratio * duration;
+}
+
+timeline.addEventListener('mousedown', e => { tlDragging = true; seekFromMouse(e); video.pause(); });
+document.addEventListener('mousemove', e => {
+  if (tlDragging) { seekFromMouse(e); }
+  // 툴팁
+  const rect = timeline.getBoundingClientRect();
+  if (e.clientY >= rect.top - 10 && e.clientY <= rect.bottom + 10) {
+    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const sec   = ratio * duration;
+    tlTooltip.style.display = 'block';
+    tlTooltip.style.left    = (e.clientX - rect.left) + 'px';
+    tlTooltip.textContent   = fmtSec(sec);
+  } else {
+    tlTooltip.style.display = 'none';
+  }
+});
+document.addEventListener('mouseup',   () => { tlDragging = false; });
+
+// ==========================================
+// UI 업데이트
+// ==========================================
+function fmtSec(s) {
+  const m = Math.floor(s / 60);
+  const sec = (s % 60).toFixed(1);
+  return `${m}:${sec.padStart(4,'0')}`;
+}
+
+function updateUI() {
+  const t  = video.currentTime;
+  document.getElementById('tb-time').textContent =
+    `${fmtSec(t)} / ${fmtSec(duration)}`;
+  document.getElementById('tb-speed').textContent =
+    `x${SPEEDS[speedIdx].toFixed(2)}`;
+  document.getElementById('cnt-made').textContent   = `🟢 성공: ${madeEvents.length}`;
+  document.getElementById('cnt-missed').textContent = `🔴 실패: ${missedEvents.length}`;
+  document.getElementById('in-overlay').style.display =
+    pendingIn !== null ? 'block' : 'none';
+  updateTimeline();
+}
+
+video.addEventListener('timeupdate', updateUI);
+
+// ==========================================
+// 플래시 메시지
+// ==========================================
+function flash(msg, color) {
+  const el = document.getElementById('flash');
+  el.textContent  = msg;
+  el.style.color  = color || '#fff';
+  el.classList.add('show');
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => el.classList.remove('show'), 900);
+}
+
+// ==========================================
+// 마커 추가
+// ==========================================
+function addMarker(type) {
+  const out = video.currentTime;
+  const in_ = pendingIn !== null ? pendingIn : Math.max(0, out - PRE_SECONDS);
+  pendingIn = null;
+
+  const ev = { in: in_, out };
+  if (type === 'made') {
+    madeEvents.push(ev);
+    flash(`🟢 성공  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
+    console.log(`🟢 성공: ${fmtSec(in_)} ~ ${fmtSec(out)}  [${madeEvents.length}번째]`);
+  } else {
+    missedEvents.push(ev);
+    flash(`🔴 실패  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--missed)');
+    console.log(`🔴 실패: ${fmtSec(in_)} ~ ${fmtSec(out)}  [${missedEvents.length}번째]`);
+  }
+  allMarkers.push({ type, in: in_, out });
+  redoStack = [];   // 새 마커 추가 시 redo 스택 초기화
+  renderMarkers();
+  updateUI();
+  saveSession();
+}
+
+// ==========================================
+// 키보드
+// ==========================================
+document.addEventListener('keydown', e => {
+  if (uploadScr.style.display !== 'none') return;
+  if (settPanel && settPanel.classList.contains('open')) return;
+  if (['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+
+  const k = e.key;
+
+  if (k === KEYS.play)   { e.preventDefault(); video.paused ? video.play() : video.pause(); }
+  else if (k === KEYS.back)   { e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - SEEK_SEC); flash(`◀ -${SEEK_SEC}s`, 'var(--muted)'); }
+  else if (k === KEYS.fwd)    { e.preventDefault(); video.currentTime = Math.min(duration, video.currentTime + SEEK_SEC); flash(`▶ +${SEEK_SEC}s`, 'var(--muted)'); }
+  else if (k === KEYS.faster) { e.preventDefault(); speedIdx = Math.min(SPEEDS.length-1, speedIdx+1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`, 'var(--in-pt)'); updateUI(); }
+  else if (k === KEYS.slower) { e.preventDefault(); speedIdx = Math.max(0, speedIdx-1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`, 'var(--in-pt)'); updateUI(); }
+  else if (k === KEYS.in)     { e.preventDefault(); pendingIn = video.currentTime; flash(`📍 IN  ${fmtSec(pendingIn)}`, 'var(--in-pt)'); updateUI(); }
+  else if (k === KEYS.made)   { e.preventDefault(); addMarker('made'); }
+  else if (k === KEYS.missed) { e.preventDefault(); addMarker('missed'); }
+  else if (k === KEYS.save)   { e.preventDefault(); saveEDL(); }
+  else if (k === KEYS.undo && !e.shiftKey) {
+    e.preventDefault();
+    if (!allMarkers.length) { flash('취소할 마커 없음', '#888'); return; }
+    const last = allMarkers.pop();
+    redoStack.push(last);
+    if (last.type === 'made'   && madeEvents.length)   madeEvents.pop();
+    if (last.type === 'missed' && missedEvents.length) missedEvents.pop();
+    pendingIn = null;
+    renderMarkers(); updateUI(); saveSession();
+    flash('↩ 취소됨', '#aaa');
+  }
+  else if (k === KEYS.undo && e.shiftKey) {
+    e.preventDefault();
+    if (!redoStack.length) { flash('복구할 항목 없음', '#888'); return; }
+    const redo = redoStack.pop();
+    allMarkers.push(redo);
+    if (redo.type === 'made')   madeEvents.push({ in: redo.in, out: redo.out });
+    if (redo.type === 'missed') missedEvents.push({ in: redo.in, out: redo.out });
+    renderMarkers(); updateUI(); saveSession();
+    flash('↪ 복구됨', 'var(--in-pt)');
+  }
+});
+
+document.getElementById('btn-save').addEventListener('click', saveEDL);
+
+// ==========================================
+// EDL 저장
+// ==========================================
+function toTC(sec, fps) {
+  sec = Math.max(0, sec);
+  const totalF = Math.round(sec * fps);
+  const f = totalF % fps;
+  const s = Math.floor(totalF / fps) % 60;
+  const m = Math.floor(totalF / fps / 60) % 60;
+  const h = Math.floor(totalF / fps / 3600);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;
+}
+
+function buildEDL(events, title, fps) {
+  let lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
+  let recIn = 0;
+  events.forEach((ev, i) => {
+    const dur = ev.out - ev.in;
+    lines.push(
+      `${String(i+1).padStart(3,'0')}  AX  V  C  ` +
+      `${toTC(ev.in, fps)} ${toTC(ev.out, fps)} ` +
+      `${toTC(recIn, fps)} ${toTC(recIn + dur, fps)}`
+    );
+    lines.push(`* FROM CLIP NAME: ${fileName}`);
+    lines.push('');
+    recIn += dur;
+  });
+  return lines.join('\n');
+}
+
+function downloadText(content, name) {
+  const blob = new Blob([content], { type: 'text/plain' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+}
+
+function saveEDL() {
+  if (!madeEvents.length && !missedEvents.length) {
+    flash('마커가 없습니다!', '#f88');
+    return;
+  }
+  // 영상 fps 추정 (메타데이터에서 정확히 못 가져오므로 59.94 기본)
+  const fps = 59.94;
+
+  if (madeEvents.length) {
+    downloadText(buildEDL(madeEvents, 'SHOTS_MADE', fps), 'shots_made.edl');
+  }
+  setTimeout(() => {
+    if (missedEvents.length) {
+      downloadText(buildEDL(missedEvents, 'SHOTS_MISSED', fps), 'shots_missed.edl');
+    }
+  }, 300);
+
+  const total   = madeEvents.length + missedEvents.length;
+  const pctMade = total ? (madeEvents.length / total * 100).toFixed(1) : 0;
+  flash(`💾 저장완료  성공률 ${pctMade}%`, 'var(--accent)');
+  console.log(`✅ EDL 저장 | 성공:${madeEvents.length} 실패:${missedEvents.length} 성공률:${pctMade}%`);
+}
+</script>
+</body>
+</html>
