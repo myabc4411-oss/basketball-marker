@@ -100,58 +100,23 @@
   .cnt-made   { color: var(--made); }
   .cnt-missed { color: var(--missed); }
 
-  /* 마커 목록 패널 */
-  #marker-list-wrap {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    max-height: 120px;
-    overflow-y: auto;
-    flex-shrink: 0;
-    display: none;
-  }
-  #marker-list-wrap.has-items { display: block; }
-  #marker-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 8px 16px;
-  }
-  .mk-item {
-    display: flex; align-items: center; gap: 6px;
-    padding: 3px 10px; border-radius: 20px;
-    font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem;
-    border: 1px solid;
-    cursor: pointer; transition: opacity .15s;
-  }
-  .mk-item:hover { opacity: .75; }
-  .mk-item.made   { border-color: var(--made);   color: var(--made);   background: rgba(60,255,160,.07); }
-  .mk-item.missed { border-color: var(--missed); color: var(--missed); background: rgba(255,59,59,.07); }
-  .mk-item.latest { box-shadow: 0 0 0 2px currentColor; font-weight: 700; }
-  .mk-del {
-    background: none; border: none; color: inherit;
-    cursor: pointer; font-size: 0.8rem; padding: 0; line-height: 1; opacity: .6;
-  }
-  .mk-del:hover { opacity: 1; }
-
-  /* 진행바 최근 마커 깜빡임 */
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: .3; }
-  }
-  .tl-marker.latest { animation: blink 1s ease-in-out 3; }
-
-  /* 비디오 영역 */
+  /* 비디오 + 사이드패널 영역 */
   #video-wrap {
     flex: 1;
-    position: relative;
+    display: flex;
+    flex-direction: row;
+    min-height: 0;
     background: #000;
-    overflow: hidden;
+  }
+  #video-area {
+    flex: 1;
+    position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
-    min-height: 0;
+    min-width: 0;
+    overflow: hidden;
   }
-
   #video {
     max-width: 100%;
     max-height: 100%;
@@ -161,14 +126,11 @@
   /* 플래시 메시지 */
   #flash {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 2rem;
-    font-weight: 700;
-    pointer-events: none;
-    opacity: 0;
+    font-size: 2rem; font-weight: 700;
+    pointer-events: none; opacity: 0;
     transition: opacity 0.1s;
     text-shadow: 0 2px 20px rgba(0,0,0,0.8);
     white-space: nowrap;
@@ -177,19 +139,71 @@
 
   /* IN점 오버레이 */
   #in-overlay {
-    position: absolute;
-    top: 12px;
-    left: 50%;
+    position: absolute; top: 12px; left: 50%;
     transform: translateX(-50%);
-    background: rgba(0, 200, 255, 0.15);
+    background: rgba(0,200,255,0.15);
     border: 1px solid var(--in-pt);
-    border-radius: 6px;
-    padding: 4px 14px;
+    border-radius: 6px; padding: 4px 14px;
     font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    color: var(--in-pt);
-    display: none;
+    font-size: 0.78rem; color: var(--in-pt); display: none;
   }
+
+  /* 마커 사이드 패널 */
+  #marker-side {
+    width: 160px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #marker-side-title {
+    padding: 8px 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.65rem; font-weight: 700;
+    color: var(--muted); letter-spacing: .08em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #marker-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  #marker-list::-webkit-scrollbar { width: 3px; }
+  #marker-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .mk-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 5px 7px; border-radius: 7px;
+    font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem;
+    border: 1px solid; cursor: pointer; transition: opacity .15s; gap: 4px;
+  }
+  .mk-item:hover { opacity: .75; }
+  .mk-item.made   { border-color: var(--made);   color: var(--made);   background: rgba(60,255,160,.07); }
+  .mk-item.missed { border-color: var(--missed); color: var(--missed); background: rgba(255,59,59,.07); }
+  .mk-item.latest { box-shadow: 0 0 0 2px currentColor; font-weight: 700; }
+  .mk-label { flex: 1; line-height: 1.5; }
+  .mk-del {
+    background: none; border: none; color: inherit;
+    cursor: pointer; font-size: 0.75rem; padding: 0; opacity: .5; flex-shrink: 0;
+  }
+  .mk-del:hover { opacity: 1; }
+  .mk-empty {
+    color: var(--muted); font-size: 0.65rem; text-align: center;
+    font-family: 'IBM Plex Mono', monospace; padding: 20px 8px;
+    line-height: 1.6;
+  }
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: .3; }
+  }
+  .tl-marker.latest { animation: blink 1s ease-in-out 3; }
 
   /* ── 진행바 영역 ── */
   #timeline-wrap {
@@ -376,15 +390,20 @@
     </div>
   </div>
 
-  <!-- 마커 목록 -->
-  <div id="marker-list-wrap">
-    <div id="marker-list"></div>
-  </div>
+  <!-- 마커 목록 (사이드패널로 이동) -->
 
   <div id="video-wrap">
-    <video id="video" preload="auto"></video>
-    <div id="flash"></div>
-    <div id="in-overlay">📍 IN점 지정됨 — A 또는 X 로 확정</div>
+    <div id="video-area">
+      <video id="video" preload="auto"></video>
+      <div id="flash"></div>
+      <div id="in-overlay">📍 IN점 지정됨 — A 또는 X 로 확정</div>
+    </div>
+    <div id="marker-side">
+      <div id="marker-side-title">마커 목록</div>
+      <div id="marker-list">
+        <div class="mk-empty">아직 마커 없음<br>A=성공 X=실패</div>
+      </div>
+    </div>
   </div>
 
   <div id="timeline-wrap">
@@ -686,11 +705,12 @@ function renderMarkers() {
   });
 
   // 목록 패널
-  const wrap = document.getElementById('marker-list-wrap');
   const list = document.getElementById('marker-list');
   list.innerHTML = '';
-  if (allMarkers.length === 0) { wrap.classList.remove('has-items'); return; }
-  wrap.classList.add('has-items');
+  if (allMarkers.length === 0) {
+    list.innerHTML = '<div class="mk-empty">아직 마커 없음<br>A=성공 X=실패</div>';
+    return;
+  }
 
   allMarkers.forEach((m, i) => {
     const el = document.createElement('div');
