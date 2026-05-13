@@ -966,21 +966,24 @@ function saveEDL() {
     return;
   }
   const fps = estimatedFps;
-  console.log(`💾 EDL 저장 | 파일: ${fileName} | FPS: ${fps}`);
+
+  // 날짜 포맷: 20260514_1423
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
 
   if (madeEvents.length) {
-    downloadText(buildEDL(madeEvents, 'SHOTS_MADE', fps), 'shots_made.edl');
+    downloadText(buildEDL(madeEvents, 'SHOTS_MADE', fps), `${dateStr}_shots_made.edl`);
   }
   setTimeout(() => {
     if (missedEvents.length) {
-      downloadText(buildEDL(missedEvents, 'SHOTS_MISSED', fps), 'shots_missed.edl');
+      downloadText(buildEDL(missedEvents, 'SHOTS_MISSED', fps), `${dateStr}_shots_missed.edl`);
     }
   }, 300);
 
   const total   = madeEvents.length + missedEvents.length;
   const pctMade = total ? (madeEvents.length / total * 100).toFixed(1) : 0;
   flash(`💾 저장완료  성공률 ${pctMade}%`, 'var(--accent)');
-  console.log(`✅ EDL 저장 | 성공:${madeEvents.length} 실패:${missedEvents.length} 성공률:${pctMade}%`);
+  console.log(`✅ EDL 저장 | ${dateStr} | 성공:${madeEvents.length} 실패:${missedEvents.length} 성공률:${pctMade}%`);
 }
 </script>
 </body>
