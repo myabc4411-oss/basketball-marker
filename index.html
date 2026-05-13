@@ -604,7 +604,7 @@ function saveSession() {
     sessionStorage.setItem('bm_made',     JSON.stringify(madeEvents));
     sessionStorage.setItem('bm_missed',   JSON.stringify(missedEvents));
     sessionStorage.setItem('bm_markers',  JSON.stringify(allMarkers));
-    sessionStorage.setItem('bm_filename', fileName);
+    sessionStorage.setItem('bm_filename', fileName);   // 항상 현재 파일명으로 덮어씀
   } catch(e) {}
 }
 
@@ -965,11 +965,16 @@ function saveEDL() {
     flash('마커가 없습니다!', '#f88');
     return;
   }
+  if (!fileName) {
+    flash('파일명 오류! 영상을 다시 업로드해주세요', '#f88');
+    return;
+  }
   const fps = estimatedFps;
 
-  // 날짜 포맷: 20260514_1423
   const now = new Date();
   const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+
+  console.log(`💾 EDL 저장 | 파일: ${fileName} | FPS: ${fps} | 날짜: ${dateStr}`);
 
   if (madeEvents.length) {
     downloadText(buildEDL(madeEvents, 'SHOTS_MADE', fps), `${dateStr}_shots_made.edl`);
@@ -982,8 +987,7 @@ function saveEDL() {
 
   const total   = madeEvents.length + missedEvents.length;
   const pctMade = total ? (madeEvents.length / total * 100).toFixed(1) : 0;
-  flash(`💾 저장완료  성공률 ${pctMade}%`, 'var(--accent)');
-  console.log(`✅ EDL 저장 | ${dateStr} | 성공:${madeEvents.length} 실패:${missedEvents.length} 성공률:${pctMade}%`);
+  flash(`💾 ${fileName} 저장완료  성공률 ${pctMade}%`, 'var(--accent)');
 }
 </script>
 </body>
