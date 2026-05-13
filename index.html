@@ -492,7 +492,8 @@
 // ==========================================
 // 설정
 // ==========================================
-const PRE_SECONDS = 3.0;
+const PRE_SECONDS        = 3.0;   // 성공 슛 앞 구간
+const PRE_SECONDS_MISSED = 0.5;   // 실패 슛 앞 구간
 const SPEEDS      = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 8.0];
 const SEEK_SEC    = 3;
 
@@ -857,7 +858,8 @@ function addMarker(type) {
     in_ = lastMarker.out;   // 직전 성공 OUT점 = 이번 IN점 (끊김 없이 이어짐)
     flash(`🟢🟢 연속 성공!  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
   } else {
-    in_ = pendingIn !== null ? pendingIn : Math.max(0, out - PRE_SECONDS);
+    const pre = type === 'made' ? PRE_SECONDS : PRE_SECONDS_MISSED;
+    in_ = pendingIn !== null ? pendingIn : Math.max(0, out - pre);
     if (type === 'made') flash(`🟢 성공  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
     else                 flash(`🔴 실패  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--missed)');
   }
