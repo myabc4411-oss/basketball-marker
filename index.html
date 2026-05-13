@@ -716,8 +716,15 @@ function renderMarkers() {
     const el = document.createElement('div');
     el.className = 'mk-item ' + m.type + (i === allMarkers.length - 1 ? ' latest' : '');
     el.title = '클릭하면 해당 위치로 이동';
+
+    // 연속 성공 여부 판단
+    const prevMade = i > 0 && allMarkers[i-1].type === 'made';
+    const nextMade = i < allMarkers.length-1 && allMarkers[i+1].type === 'made';
+    const isChained = m.type === 'made' && (prevMade || nextMade);
+    const chainIcon = isChained ? '🔗' : (m.type === 'made' ? '🟢' : '🔴');
+
     el.innerHTML = `
-      <span>${m.type === 'made' ? '🟢' : '🔴'} ${fmtSec(m.in)}→${fmtSec(m.out)}</span>
+      <div class="mk-label">${chainIcon} ${i+1}<br>${fmtSec(m.in)}→${fmtSec(m.out)}</div>
       <button class="mk-del" data-i="${i}" title="삭제">✕</button>
     `;
     // 클릭 시 해당 위치로 이동
@@ -811,21 +818,30 @@ function flash(msg, color) {
 // ==========================================
 function addMarker(type) {
   const out = video.currentTime;
-  const in_ = pendingIn !== null ? pendingIn : Math.max(0, out - PRE_SECONDS);
+
+  // A → A 연속 성공: 직전 마커가 성공이면 그 OUT점을 IN점으로 사용
+  let in_;
+  const lastMarker = allMarkers.length > 0 ? allMarkers[allMarkers.length - 1] : null;
+  if (type === 'made' && lastMarker && lastMarker.type === 'made' && pendingIn === null) {
+    in_ = lastMarker.out;   // 직전 성공 OUT점 = 이번 IN점 (끊김 없이 이어짐)
+    flash(`🟢🟢 연속 성공!  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
+  } else {
+    in_ = pendingIn !== null ? pendingIn : Math.max(0, out - PRE_SECONDS);
+    if (type === 'made') flash(`🟢 성공  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
+    else                 flash(`🔴 실패  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--missed)');
+  }
   pendingIn = null;
 
   const ev = { in: in_, out };
   if (type === 'made') {
     madeEvents.push(ev);
-    flash(`🟢 성공  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
     console.log(`🟢 성공: ${fmtSec(in_)} ~ ${fmtSec(out)}  [${madeEvents.length}번째]`);
   } else {
     missedEvents.push(ev);
-    flash(`🔴 실패  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--missed)');
     console.log(`🔴 실패: ${fmtSec(in_)} ~ ${fmtSec(out)}  [${missedEvents.length}번째]`);
   }
   allMarkers.push({ type, in: in_, out });
-  redoStack = [];   // 새 마커 추가 시 redo 스택 초기화
+  redoStack = [];
   renderMarkers();
   updateUI();
   saveSession();
