@@ -504,10 +504,11 @@ let missedEvents = [];
 let allMarkers   = [];   // { type, in, out }
 let redoStack    = [];   // undo된 마커 보관
 
-let speedIdx  = 2;   // 기본 1.0x
-let pendingIn = null;
-let fileName  = "";
-let duration  = 0;
+let speedIdx     = 2;   // 기본 1.0x
+let pendingIn    = null;
+let fileName     = "";
+let duration     = 0;
+let estimatedFps = 59.94;   // 영상 로드 후 업데이트
 
 let flashTimer = null;
 
@@ -630,6 +631,36 @@ function loadFile(file) {
   video.load();
   video.onloadedmetadata = () => {
     duration = video.duration;
+
+    // FPS 추정: 브라우저에서 정확한 FPS를 못 가져오므로
+    // 영상 파일명으로 추정 (MOV/MP4 아이폰은 보통 59.94 또는 29.97)
+    // 더 정확하게는 재생 중 requestVideoFrameCallback으로 측정
+    estimatedFps = 59.94;   // 기본값
+    if (fileName.toLowerCase().includes('60')) estimatedFps = 60;
+    if (fileName.toLowerCase().includes('30')) estimatedFps = 29.97;
+
+    // 실제 FPS 측정 (가능한 경우)
+    if ('requestVideoFrameCallback' in video) {
+      let lastTime = null, frameCount = 0;
+      const measure = (now, meta) => {
+        if (lastTime !== null) {
+          frameCount++;
+          if (frameCount >= 10) {
+            const measuredFps = 1000 / ((now - lastTime) / frameCount);
+            // 일반적인 FPS 값으로 반올림
+            if      (measuredFps > 55) estimatedFps = 59.94;
+            else if (measuredFps > 27) estimatedFps = 29.97;
+            else if (measuredFps > 23) estimatedFps = 23.976;
+            console.log(`📹 측정 FPS: ${measuredFps.toFixed(2)} → ${estimatedFps}`);
+            return;
+          }
+        } else {
+          lastTime = now;
+        }
+        video.requestVideoFrameCallback(measure);
+      };
+      video.requestVideoFrameCallback(measure);
+    }
     uploadScr.style.display = 'none';
     editor.style.display    = 'flex';
     document.getElementById('tb-filename').textContent = fileName;
@@ -934,8 +965,8 @@ function saveEDL() {
     flash('마커가 없습니다!', '#f88');
     return;
   }
-  // 영상 fps 추정 (메타데이터에서 정확히 못 가져오므로 59.94 기본)
-  const fps = 59.94;
+  const fps = estimatedFps;
+  console.log(`💾 EDL 저장 | 파일: ${fileName} | FPS: ${fps}`);
 
   if (madeEvents.length) {
     downloadText(buildEDL(madeEvents, 'SHOTS_MADE', fps), 'shots_made.edl');
