@@ -382,6 +382,8 @@
     <span class="tb-sep">|</span>
     <span class="tb-speed" id="tb-speed">x1.0</span>
     <span class="tb-sep">|</span>
+    <span id="tb-fps" style="color:var(--muted); font-size:0.75rem;">FPS 측정중...</span>
+    <span class="tb-sep">|</span>
     <span id="tb-filename" style="color:var(--muted);"></span>
     <div class="tb-counts">
       <span class="cnt-made"   id="cnt-made">🟢 성공: 0</span>
@@ -509,7 +511,8 @@ let speedIdx     = 2;   // 기본 1.0x
 let pendingIn    = null;
 let fileName     = "";
 let duration     = 0;
-let estimatedFps = 60;   // 영상 로드 후 업데이트
+let estimatedFps = 60;
+let fpsReady     = false;   // FPS 측정 완료 여부
 
 let flashTimer = null;
 
@@ -636,10 +639,11 @@ function loadFile(file) {
     // FPS 추정: 브라우저에서 정확한 FPS를 못 가져오므로
     // 영상 파일명으로 추정 (MOV/MP4 아이폰은 보통 59.94 또는 29.97)
     // 더 정확하게는 재생 중 requestVideoFrameCallback으로 측정
-    estimatedFps = 60;   // 기본값
+    estimatedFps = 60;
+    fpsReady     = false;
+
     if (fileName.toLowerCase().includes('30')) estimatedFps = 30;
 
-    // 실제 FPS 측정 (가능한 경우)
     if ('requestVideoFrameCallback' in video) {
       let lastTime = null, frameCount = 0;
       const measure = (now, meta) => {
@@ -650,7 +654,10 @@ function loadFile(file) {
             if      (measuredFps > 55) estimatedFps = 60;
             else if (measuredFps > 27) estimatedFps = 30;
             else if (measuredFps > 23) estimatedFps = 24;
+            fpsReady = true;
             console.log(`📹 측정 FPS: ${measuredFps.toFixed(2)} → ${estimatedFps}`);
+            document.getElementById('tb-fps').textContent = `${estimatedFps}fps`;
+            document.getElementById('tb-fps').style.color = 'var(--in-pt)';
             return;
           }
         } else {
@@ -659,6 +666,10 @@ function loadFile(file) {
         video.requestVideoFrameCallback(measure);
       };
       video.requestVideoFrameCallback(measure);
+    } else {
+      fpsReady = true;
+      document.getElementById('tb-fps').textContent = `${estimatedFps}fps (기본값)`;
+      document.getElementById('tb-fps').style.color = 'var(--muted)';
     }
     uploadScr.style.display = 'none';
     editor.style.display    = 'flex';
@@ -963,6 +974,10 @@ function downloadText(content, name) {
 function saveEDL() {
   if (!madeEvents.length && !missedEvents.length) {
     flash('마커가 없습니다!', '#f88');
+    return;
+  }
+  if (!fpsReady) {
+    flash('⏳ FPS 측정 중... 잠시 후 다시 시도하세요', '#f88');
     return;
   }
   if (!fileName) {
