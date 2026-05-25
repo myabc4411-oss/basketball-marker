@@ -509,7 +509,7 @@ let speedIdx     = 2;   // 기본 1.0x
 let pendingIn    = null;
 let fileName     = "";
 let duration     = 0;
-let estimatedFps = 59.94;   // 영상 로드 후 업데이트
+let estimatedFps = 60;   // 영상 로드 후 업데이트
 
 let flashTimer = null;
 
@@ -636,9 +636,8 @@ function loadFile(file) {
     // FPS 추정: 브라우저에서 정확한 FPS를 못 가져오므로
     // 영상 파일명으로 추정 (MOV/MP4 아이폰은 보통 59.94 또는 29.97)
     // 더 정확하게는 재생 중 requestVideoFrameCallback으로 측정
-    estimatedFps = 59.94;   // 기본값
-    if (fileName.toLowerCase().includes('60')) estimatedFps = 60;
-    if (fileName.toLowerCase().includes('30')) estimatedFps = 29.97;
+    estimatedFps = 60;   // 기본값
+    if (fileName.toLowerCase().includes('30')) estimatedFps = 30;
 
     // 실제 FPS 측정 (가능한 경우)
     if ('requestVideoFrameCallback' in video) {
@@ -648,10 +647,9 @@ function loadFile(file) {
           frameCount++;
           if (frameCount >= 10) {
             const measuredFps = 1000 / ((now - lastTime) / frameCount);
-            // 일반적인 FPS 값으로 반올림
-            if      (measuredFps > 55) estimatedFps = 59.94;
-            else if (measuredFps > 27) estimatedFps = 29.97;
-            else if (measuredFps > 23) estimatedFps = 23.976;
+            if      (measuredFps > 55) estimatedFps = 60;
+            else if (measuredFps > 27) estimatedFps = 30;
+            else if (measuredFps > 23) estimatedFps = 24;
             console.log(`📹 측정 FPS: ${measuredFps.toFixed(2)} → ${estimatedFps}`);
             return;
           }
