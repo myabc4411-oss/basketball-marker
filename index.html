@@ -8,354 +8,292 @@
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@300;400;600&display=swap');
 
   :root {
-    --bg:        #0a0a0f;
-    --surface:   #13131a;
-    --border:    #222230;
-    --made:      #00e87a;
-    --missed:    #ff3b3b;
-    --accent:    #f5a623;
-    --in-pt:     #00c8ff;
-    --text:      #e8e8f0;
-    --muted:     #555570;
-    --bar-h:     12px;
+    --bg:      #0a0a0f;
+    --surface: #13131a;
+    --border:  #222230;
+    --made:    #00e87a;
+    --missed:  #ff3b3b;
+    --accent:  #f5a623;
+    --in-pt:   #00c8ff;
+    --text:    #e8e8f0;
+    --muted:   #555570;
+    --bar-h:   12px;
   }
 
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin:0; padding:0; box-sizing:border-box; }
 
   body {
-    background: var(--bg);
-    color: var(--text);
+    background: var(--bg); color: var(--text);
     font-family: 'IBM Plex Sans KR', sans-serif;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    user-select: none;
+    height: 100vh; display: flex; flex-direction: column;
+    overflow: hidden; user-select: none;
   }
 
   /* ── 업로드 화면 ── */
   #upload-screen {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 28px;
+    flex:1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:24px;
   }
-
   .upload-title {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 2rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    color: var(--accent);
+    font-family:'IBM Plex Mono',monospace; font-size:2rem;
+    font-weight:700; color:var(--accent);
   }
-
-  .upload-sub {
-    color: var(--muted);
-    font-size: 0.9rem;
-    letter-spacing: 0.05em;
-  }
-
+  .upload-sub { color:var(--muted); font-size:0.9rem; }
   .upload-zone {
-    border: 2px dashed var(--border);
-    border-radius: 16px;
-    width: 480px;
-    height: 200px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
-    position: relative;
+    border:2px dashed var(--border); border-radius:16px;
+    width:520px; min-height:180px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:10px;
+    cursor:pointer; transition:border-color .2s,background .2s;
+    position:relative; padding:20px;
   }
-  .upload-zone:hover, .upload-zone.drag { border-color: var(--accent); background: #1a1a10; }
-  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-  .upload-icon { font-size: 2.5rem; }
-  .upload-label { font-size: 0.95rem; color: var(--muted); }
-  .upload-note  { font-size: 0.78rem; color: #333348; font-family: 'IBM Plex Mono', monospace; }
+  .upload-zone:hover,.upload-zone.drag { border-color:var(--accent); background:#1a1a10; }
+  .upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .upload-icon { font-size:2.5rem; }
+  .upload-label { font-size:0.9rem; color:var(--muted); }
+  .upload-note  { font-size:0.72rem; color:#333348; font-family:'IBM Plex Mono',monospace; }
 
-  /* ── 메인 에디터 ── */
-  #editor { flex: 1; display: none; flex-direction: column; overflow: hidden; }
+  /* 업로드된 파일 목록 */
+  #file-queue {
+    width:520px; display:flex; flex-direction:column; gap:6px;
+  }
+  .fq-item {
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:8px 12px;
+    font-family:'IBM Plex Mono',monospace; font-size:0.75rem;
+  }
+  .fq-item.active { border-color:var(--accent); color:var(--accent); }
+  .fq-item.done   { border-color:var(--made); color:var(--made); opacity:.6; }
+  .fq-num { color:var(--muted); margin-right:10px; }
+  .fq-name { flex:1; }
+  .fq-status { font-size:0.65rem; }
 
-  /* 상단 바 */
+  #btn-start {
+    background:var(--accent); border:none; border-radius:10px;
+    padding:10px 32px; font-family:'IBM Plex Mono',monospace;
+    font-size:0.9rem; font-weight:700; color:#000; cursor:pointer;
+    transition:opacity .15s; display:none;
+  }
+  #btn-start:hover { opacity:.85; }
+
+  /* ── 에디터 ── */
+  #editor { flex:1; display:none; flex-direction:column; overflow:hidden; }
+
+  /* 상단바 */
   #topbar {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    padding: 8px 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    flex-shrink: 0;
+    display:flex; align-items:center; gap:12px;
+    padding:6px 14px; background:var(--surface);
+    border-bottom:1px solid var(--border);
+    font-family:'IBM Plex Mono',monospace; font-size:0.75rem;
+    flex-shrink:0;
   }
-  .tb-title { color: var(--accent); font-weight: 700; font-size: 0.9rem; }
-  .tb-time  { color: var(--text); font-size: 0.88rem; }
-  .tb-speed { color: var(--in-pt); }
-  .tb-sep   { color: var(--border); }
-  .tb-counts { display: flex; gap: 16px; margin-left: auto; }
-  .cnt-made   { color: var(--made); }
-  .cnt-missed { color: var(--missed); }
+  .tb-title  { color:var(--accent); font-weight:700; font-size:0.88rem; }
+  .tb-time   { color:var(--text); }
+  .tb-speed  { color:var(--in-pt); }
+  .tb-fps    { color:var(--muted); font-size:0.7rem; }
+  .tb-sep    { color:var(--border); }
+  .tb-counts { display:flex; gap:12px; margin-left:auto; }
+  .cnt-made   { color:var(--made); }
+  .cnt-missed { color:var(--missed); }
 
-  /* 비디오 + 사이드패널 영역 */
+  /* 영상 진행 표시 */
+  #video-progress-bar {
+    display:flex; align-items:center; gap:6px;
+    padding:5px 14px; background:#0d0d18;
+    border-bottom:1px solid var(--border);
+    flex-shrink:0; overflow-x:auto;
+  }
+  .vp-item {
+    display:flex; align-items:center; gap:5px;
+    padding:3px 10px; border-radius:20px;
+    font-family:'IBM Plex Mono',monospace; font-size:0.65rem;
+    border:1px solid var(--border); color:var(--muted);
+    white-space:nowrap; flex-shrink:0;
+  }
+  .vp-item.active { border-color:var(--accent); color:var(--accent); background:rgba(245,166,35,.08); }
+  .vp-item.done   { border-color:var(--made);   color:var(--made);   background:rgba(60,255,160,.06); }
+  .vp-arrow { color:var(--border); font-size:0.7rem; }
+
+  /* 비디오 + 사이드패널 */
   #video-wrap {
-    flex: 1;
-    display: flex;
-    flex-direction: row;
-    min-height: 0;
-    background: #000;
+    flex:1; display:flex; flex-direction:row;
+    min-height:0; background:#000;
   }
   #video-area {
-    flex: 1;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 0;
-    overflow: hidden;
+    flex:1; position:relative; display:flex;
+    align-items:center; justify-content:center;
+    min-width:0; overflow:hidden;
   }
-  #video {
-    max-width: 100%;
-    max-height: 100%;
-    display: block;
-  }
+  #video { max-width:100%; max-height:100%; display:block; }
 
-  /* 플래시 메시지 */
   #flash {
-    position: absolute;
-    top: 50%; left: 50%;
-    transform: translate(-50%,-50%);
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 2rem; font-weight: 700;
-    pointer-events: none; opacity: 0;
-    transition: opacity 0.1s;
-    text-shadow: 0 2px 20px rgba(0,0,0,0.8);
-    white-space: nowrap;
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:2rem; font-weight:700;
+    pointer-events:none; opacity:0; transition:opacity .1s;
+    text-shadow:0 2px 20px rgba(0,0,0,0.8); white-space:nowrap;
   }
-  #flash.show { opacity: 1; }
+  #flash.show { opacity:1; }
 
-  /* IN점 오버레이 */
   #in-overlay {
-    position: absolute; top: 12px; left: 50%;
-    transform: translateX(-50%);
-    background: rgba(0,200,255,0.15);
-    border: 1px solid var(--in-pt);
-    border-radius: 6px; padding: 4px 14px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem; color: var(--in-pt); display: none;
+    position:absolute; top:12px; left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,200,255,0.15);
+    border:1px solid var(--in-pt); border-radius:6px;
+    padding:4px 14px; font-family:'IBM Plex Mono',monospace;
+    font-size:0.75rem; color:var(--in-pt); display:none;
   }
 
   /* 마커 사이드 패널 */
   #marker-side {
-    width: 160px;
-    flex-shrink: 0;
-    background: var(--surface);
-    border-left: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
+    width:160px; flex-shrink:0; background:var(--surface);
+    border-left:1px solid var(--border);
+    display:flex; flex-direction:column; overflow:hidden;
   }
   #marker-side-title {
-    padding: 8px 10px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.65rem; font-weight: 700;
-    color: var(--muted); letter-spacing: .08em;
-    text-transform: uppercase;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
+    padding:7px 10px; font-family:'IBM Plex Mono',monospace;
+    font-size:0.62rem; font-weight:700; color:var(--muted);
+    letter-spacing:.08em; text-transform:uppercase;
+    border-bottom:1px solid var(--border); flex-shrink:0;
   }
   #marker-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+    flex:1; overflow-y:auto; padding:6px;
+    display:flex; flex-direction:column; gap:4px;
   }
-  #marker-list::-webkit-scrollbar { width: 3px; }
-  #marker-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  #marker-list::-webkit-scrollbar { width:3px; }
+  #marker-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
   .mk-item {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 5px 7px; border-radius: 7px;
-    font-family: 'IBM Plex Mono', monospace; font-size: 0.65rem;
-    border: 1px solid; cursor: pointer; transition: opacity .15s; gap: 4px;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:5px 7px; border-radius:7px;
+    font-family:'IBM Plex Mono',monospace; font-size:0.62rem;
+    border:1px solid; cursor:pointer; transition:opacity .15s; gap:4px;
   }
-  .mk-item:hover { opacity: .75; }
-  .mk-item.made   { border-color: var(--made);   color: var(--made);   background: rgba(60,255,160,.07); }
-  .mk-item.missed { border-color: var(--missed); color: var(--missed); background: rgba(255,59,59,.07); }
-  .mk-item.latest { box-shadow: 0 0 0 2px currentColor; font-weight: 700; }
-  .mk-label { flex: 1; line-height: 1.5; }
+  .mk-item:hover { opacity:.75; }
+  .mk-item.made   { border-color:var(--made);   color:var(--made);   background:rgba(60,255,160,.07); }
+  .mk-item.missed { border-color:var(--missed); color:var(--missed); background:rgba(255,59,59,.07); }
+  .mk-item.latest { box-shadow:0 0 0 2px currentColor; font-weight:700; }
+  .mk-label { flex:1; line-height:1.5; }
   .mk-del {
-    background: none; border: none; color: inherit;
-    cursor: pointer; font-size: 0.75rem; padding: 0; opacity: .5; flex-shrink: 0;
+    background:none; border:none; color:inherit;
+    cursor:pointer; font-size:0.72rem; padding:0; opacity:.5; flex-shrink:0;
   }
-  .mk-del:hover { opacity: 1; }
+  .mk-del:hover { opacity:1; }
   .mk-empty {
-    color: var(--muted); font-size: 0.65rem; text-align: center;
-    font-family: 'IBM Plex Mono', monospace; padding: 20px 8px;
-    line-height: 1.6;
+    color:var(--muted); font-size:0.62rem; text-align:center;
+    font-family:'IBM Plex Mono',monospace; padding:16px 6px; line-height:1.6;
   }
 
   @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: .3; }
+    0%,100% { opacity:1; } 50% { opacity:.3; }
   }
-  .tl-marker.latest { animation: blink 1s ease-in-out 3; }
+  .tl-marker.latest { animation:blink 1s ease-in-out 3; }
 
-  /* ── 진행바 영역 ── */
+  /* 진행바 */
   #timeline-wrap {
-    padding: 10px 16px 6px;
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    flex-shrink: 0;
+    padding:10px 14px 6px; background:var(--surface);
+    border-top:1px solid var(--border); flex-shrink:0;
   }
-
   #timeline {
-    position: relative;
-    height: var(--bar-h);
-    background: #1e1e2e;
-    border-radius: 6px;
-    cursor: pointer;
-    overflow: visible;
+    position:relative; height:var(--bar-h);
+    background:#1e1e2e; border-radius:6px; cursor:pointer; overflow:visible;
   }
-
   #tl-progress {
-    position: absolute;
-    left: 0; top: 0; bottom: 0;
-    background: var(--accent);
-    opacity: 0.35;
-    border-radius: 6px;
-    pointer-events: none;
+    position:absolute; left:0; top:0; bottom:0;
+    background:var(--accent); opacity:.35;
+    border-radius:6px; pointer-events:none;
   }
-
   #tl-cursor {
-    position: absolute;
-    top: -5px;
-    width: 3px;
-    height: calc(var(--bar-h) + 10px);
-    background: #fff;
-    border-radius: 2px;
-    transform: translateX(-50%);
-    pointer-events: none;
+    position:absolute; top:-5px; width:3px;
+    height:calc(var(--bar-h) + 10px); background:#fff;
+    border-radius:2px; transform:translateX(-50%); pointer-events:none;
   }
-
   .tl-marker {
-    position: absolute;
-    top: 0; bottom: 0;
-    pointer-events: none;
-    border-radius: 3px;
-    opacity: 0.75;
+    position:absolute; top:0; bottom:0;
+    pointer-events:none; border-radius:3px; opacity:.75;
   }
-
   #tl-in-cursor {
-    position: absolute;
-    top: -7px;
-    width: 3px;
-    height: calc(var(--bar-h) + 14px);
-    background: var(--in-pt);
-    border-radius: 2px;
-    transform: translateX(-50%);
-    pointer-events: none;
-    display: none;
-    box-shadow: 0 0 6px var(--in-pt);
+    position:absolute; top:-7px; width:3px;
+    height:calc(var(--bar-h) + 14px); background:var(--in-pt);
+    border-radius:2px; transform:translateX(-50%);
+    pointer-events:none; display:none; box-shadow:0 0 6px var(--in-pt);
   }
-
   #tl-tooltip {
-    position: absolute;
-    bottom: calc(var(--bar-h) + 8px);
-    background: #222;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 8px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.7rem;
-    color: var(--text);
-    pointer-events: none;
-    display: none;
-    transform: translateX(-50%);
-    white-space: nowrap;
+    position:absolute; bottom:calc(var(--bar-h) + 8px);
+    background:#222; border:1px solid var(--border);
+    border-radius:4px; padding:2px 8px;
+    font-family:'IBM Plex Mono',monospace; font-size:0.68rem;
+    color:var(--text); pointer-events:none; display:none;
+    transform:translateX(-50%); white-space:nowrap;
   }
 
-  /* ── 하단 컨트롤 ── */
+  /* 컨트롤바 */
   #controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px 10px;
-    background: var(--surface);
-    flex-shrink: 0;
-    flex-wrap: wrap;
+    display:flex; align-items:center; gap:6px;
+    padding:7px 14px 9px; background:var(--surface);
+    flex-shrink:0; flex-wrap:wrap;
   }
-
   .btn {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.72rem;
-    border: 1px solid var(--border);
-    background: transparent;
-    color: var(--muted);
-    border-radius: 5px;
-    padding: 5px 10px;
-    cursor: default;
-    white-space: nowrap;
+    font-family:'IBM Plex Mono',monospace; font-size:0.7rem;
+    border:1px solid var(--border); background:transparent;
+    color:var(--muted); border-radius:5px; padding:4px 9px;
+    cursor:default; white-space:nowrap;
   }
-  .btn span { color: var(--text); font-weight: 600; }
-  .btn.made   { border-color: var(--made);   color: var(--made); }
-  .btn.missed { border-color: var(--missed); color: var(--missed); }
-  .btn.save   { border-color: var(--accent); color: var(--accent); margin-left: auto; }
-  .btn.cancel { border-color: #444; color: #777; }
+  .btn span { color:var(--text); font-weight:600; }
+  .btn.made   { border-color:var(--made);   color:var(--made); }
+  .btn.missed { border-color:var(--missed); color:var(--missed); }
+  .btn.save   { border-color:var(--accent); color:var(--accent); margin-left:auto; }
+  .btn.next   { border-color:var(--in-pt);  color:var(--in-pt); }
+  .btn.cancel { border-color:#444; color:#777; }
+  .sep { width:1px; height:18px; background:var(--border); }
 
-  .sep { width: 1px; height: 20px; background: var(--border); }
-
-  /* ── 설정 패널 ── */
+  /* 설정 패널 */
   #settings-panel {
-    display: none; position: fixed; inset: 0; z-index: 100;
-    background: rgba(8,8,16,.88); backdrop-filter: blur(8px);
-    align-items: center; justify-content: center;
+    display:none; position:fixed; inset:0; z-index:100;
+    background:rgba(8,8,16,.88); backdrop-filter:blur(8px);
+    align-items:center; justify-content:center;
   }
-  #settings-panel.open { display: flex; }
+  #settings-panel.open { display:flex; }
   .sp-box {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 14px; width: 460px; max-height: 80vh;
-    overflow-y: auto; padding: 24px;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; width:460px; max-height:80vh;
+    overflow-y:auto; padding:24px;
   }
   .sp-title {
-    font-family: 'IBM Plex Mono', monospace; font-size: 1rem; font-weight: 700;
-    color: var(--accent); margin-bottom: 18px;
+    font-family:'IBM Plex Mono',monospace; font-size:1rem; font-weight:700;
+    color:var(--accent); margin-bottom:18px;
   }
   .sp-sec-title {
-    font-family: 'IBM Plex Mono', monospace; font-size: .68rem; font-weight: 600;
-    color: var(--muted); letter-spacing: .1em; text-transform: uppercase;
-    margin: 14px 0 8px;
+    font-family:'IBM Plex Mono',monospace; font-size:.68rem; font-weight:600;
+    color:var(--muted); letter-spacing:.1em; text-transform:uppercase;
+    margin:14px 0 8px;
   }
   .sp-row {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 7px 0; border-bottom: 1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between;
+    padding:7px 0; border-bottom:1px solid var(--border);
   }
-  .sp-row:last-child { border-bottom: none; }
-  .sp-label { font-size: .83rem; color: var(--text); }
+  .sp-row:last-child { border-bottom:none; }
+  .sp-label { font-size:.82rem; color:var(--text); }
   .sp-key-input {
-    background: #1a1a28; border: 1px solid var(--border);
-    border-radius: 6px; padding: 4px 12px;
-    font-family: 'IBM Plex Mono', monospace; font-size: .82rem; font-weight: 700;
-    color: var(--accent); text-align: center; width: 90px;
-    cursor: pointer; outline: none; caret-color: transparent;
+    background:#1a1a28; border:1px solid var(--border);
+    border-radius:6px; padding:4px 12px;
+    font-family:'IBM Plex Mono',monospace; font-size:.8rem; font-weight:700;
+    color:var(--accent); text-align:center; width:90px;
+    cursor:pointer; outline:none; caret-color:transparent;
   }
   .sp-key-input.listening {
-    border-color: var(--accent); color: #fff;
-    box-shadow: 0 0 0 2px rgba(245,166,35,.25);
+    border-color:var(--accent); color:#fff;
+    box-shadow:0 0 0 2px rgba(245,166,35,.25);
   }
-  .sp-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+  .sp-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
   .sp-btn {
-    padding: 6px 18px; border-radius: 7px;
-    font-family: 'IBM Plex Mono', monospace; font-size: .78rem; font-weight: 700;
-    cursor: pointer; border: 1px solid var(--border);
-    background: transparent; color: var(--muted); transition: all .15s;
+    padding:6px 18px; border-radius:7px;
+    font-family:'IBM Plex Mono',monospace; font-size:.78rem; font-weight:700;
+    cursor:pointer; border:1px solid var(--border);
+    background:transparent; color:var(--muted); transition:all .15s;
   }
-  .sp-btn.primary { background: var(--accent); border: none; color: #000; }
-  .sp-btn:hover { color: var(--text); }
+  .sp-btn.primary { background:var(--accent); border:none; color:#000; }
+  .sp-btn:hover { color:var(--text); }
 </style>
 </head>
 <body>
@@ -363,13 +301,15 @@
 <!-- ── 업로드 화면 ── -->
 <div id="upload-screen">
   <div class="upload-title">🏀 농구 슛 마커</div>
-  <div class="upload-sub">영상을 업로드하고 키보드로 슛을 마킹하세요</div>
+  <div class="upload-sub">영상을 여러 개 한번에 올려서 이어서 마킹하세요</div>
   <div class="upload-zone" id="drop-zone">
-    <input type="file" id="file-input" accept="video/*">
+    <input type="file" id="file-input" accept="video/*" multiple>
     <div class="upload-icon">📂</div>
-    <div class="upload-label">클릭하거나 영상 파일을 드래그하세요</div>
-    <div class="upload-note">MP4 권장 · MOV · AVI · MKV 지원</div>
+    <div class="upload-label">클릭하거나 영상 파일을 드래그하세요 (여러 개 가능)</div>
+    <div class="upload-note">MP4 권장 · MOV · AVI · MKV · 여러 파일 동시 선택 가능</div>
   </div>
+  <div id="file-queue"></div>
+  <button id="btn-start">▶ 마킹 시작</button>
 </div>
 
 <!-- ── 에디터 ── -->
@@ -382,9 +322,9 @@
     <span class="tb-sep">|</span>
     <span class="tb-speed" id="tb-speed">x1.0</span>
     <span class="tb-sep">|</span>
-    <span id="tb-fps" style="color:var(--muted); font-size:0.75rem;">FPS 측정중...</span>
+    <span class="tb-fps" id="tb-fps">FPS 측정중...</span>
     <span class="tb-sep">|</span>
-    <span id="tb-filename" style="color:var(--muted);"></span>
+    <span id="tb-filename" style="color:var(--muted); font-size:0.72rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
     <div class="tb-counts">
       <span class="cnt-made"   id="cnt-made">🟢 성공: 0</span>
       <span class="cnt-missed" id="cnt-missed">🔴 실패: 0</span>
@@ -392,7 +332,8 @@
     </div>
   </div>
 
-  <!-- 마커 목록 (사이드패널로 이동) -->
+  <!-- 영상 진행 표시 -->
+  <div id="video-progress-bar"></div>
 
   <div id="video-wrap">
     <div id="video-area">
@@ -423,12 +364,13 @@
     <div class="btn"><span id="lbl-fwd">L</span> +3초</div>
     <div class="btn"><span id="lbl-slower">[</span><span id="lbl-faster">]</span> 배속</div>
     <div class="sep"></div>
-    <div class="btn"><span id="lbl-in">I</span> IN점 지정</div>
-    <div class="btn made"><span id="lbl-made">A</span> 슛 성공</div>
-    <div class="btn missed"><span id="lbl-missed">X</span> 슛 실패</div>
+    <div class="btn"><span id="lbl-in">I</span> IN점</div>
+    <div class="btn made"><span id="lbl-made">A</span> 성공</div>
+    <div class="btn missed"><span id="lbl-missed">X</span> 실패</div>
     <div class="btn cancel"><span id="lbl-undo">Z</span> 취소</div>
     <div class="btn cancel">Shift+<span id="lbl-redo">Z</span> 복구</div>
     <div class="sep"></div>
+    <div class="btn next" id="btn-next-vid"><span id="lbl-next">N</span> 다음 영상</div>
     <div class="btn save" id="btn-save"><span id="lbl-save">S</span> EDL 저장</div>
   </div>
 
@@ -438,54 +380,22 @@
 <div id="settings-panel">
   <div class="sp-box">
     <div class="sp-title">⚙ 키보드 커스텀</div>
-
     <div class="sp-sec-title">재생 컨트롤</div>
-    <div class="sp-row">
-      <div class="sp-label">재생 / 정지</div>
-      <input class="sp-key-input" data-action="play" readonly value="Space">
-    </div>
-    <div class="sp-row">
-      <div class="sp-label">뒤로 3초</div>
-      <input class="sp-key-input" data-action="back" readonly value="j">
-    </div>
-    <div class="sp-row">
-      <div class="sp-label">앞으로 3초</div>
-      <input class="sp-key-input" data-action="fwd" readonly value="l">
-    </div>
-    <div class="sp-row">
-      <div class="sp-label">배속 내리기</div>
-      <input class="sp-key-input" data-action="slower" readonly value="[">
-    </div>
-    <div class="sp-row">
-      <div class="sp-label">배속 올리기</div>
-      <input class="sp-key-input" data-action="faster" readonly value="]">
-    </div>
-
+    <div class="sp-row"><div class="sp-label">재생 / 정지</div><input class="sp-key-input" data-action="play"   readonly value="Space"></div>
+    <div class="sp-row"><div class="sp-label">뒤로 3초</div>   <input class="sp-key-input" data-action="back"   readonly value="j"></div>
+    <div class="sp-row"><div class="sp-label">앞으로 3초</div> <input class="sp-key-input" data-action="fwd"    readonly value="l"></div>
+    <div class="sp-row"><div class="sp-label">배속 내리기</div><input class="sp-key-input" data-action="slower" readonly value="["></div>
+    <div class="sp-row"><div class="sp-label">배속 올리기</div><input class="sp-key-input" data-action="faster" readonly value="]"></div>
     <div class="sp-sec-title">마킹</div>
-    <div class="sp-row">
-      <div class="sp-label">IN점 지정</div>
-      <input class="sp-key-input" data-action="in" readonly value="i">
-    </div>
-    <div class="sp-row">
-      <div class="sp-label">슛 성공</div>
-      <input class="sp-key-input" data-action="made" readonly value="a">
-    </div>
-    <div class="sp-row">
-      <div class="sp-label">슛 실패</div>
-      <input class="sp-key-input" data-action="missed" readonly value="x">
-    </div>
-    <div class="sp-row">
-      <div class="sp-label">취소 (Undo)</div>
-      <input class="sp-key-input" data-action="undo" readonly value="z">
-    </div>
-    <div class="sp-row">
-      <div class="sp-label">EDL 저장</div>
-      <input class="sp-key-input" data-action="save" readonly value="s">
-    </div>
-
+    <div class="sp-row"><div class="sp-label">IN점 지정</div>  <input class="sp-key-input" data-action="in"     readonly value="i"></div>
+    <div class="sp-row"><div class="sp-label">슛 성공</div>    <input class="sp-key-input" data-action="made"   readonly value="a"></div>
+    <div class="sp-row"><div class="sp-label">슛 실패</div>    <input class="sp-key-input" data-action="missed" readonly value="x"></div>
+    <div class="sp-row"><div class="sp-label">취소</div>       <input class="sp-key-input" data-action="undo"   readonly value="z"></div>
+    <div class="sp-row"><div class="sp-label">다음 영상</div>  <input class="sp-key-input" data-action="next"   readonly value="n"></div>
+    <div class="sp-row"><div class="sp-label">EDL 저장</div>   <input class="sp-key-input" data-action="save"   readonly value="s"></div>
     <div class="sp-footer">
       <button class="sp-btn" id="sp-cancel">취소</button>
-      <button class="sp-btn primary" id="sp-save">저장</button>
+      <button class="sp-btn primary" id="sp-save-settings">저장</button>
     </div>
   </div>
 </div>
@@ -494,50 +404,52 @@
 // ==========================================
 // 설정
 // ==========================================
-const PRE_SECONDS        = 3.0;   // 성공 슛 앞 구간
-const PRE_SECONDS_MISSED = 0.1;   // 실패 슛 앞 구간
-const SPEEDS      = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 8.0];
-const SEEK_SEC    = 3;
+const PRE_SECONDS        = 3.0;
+const PRE_SECONDS_MISSED = 0.1;
+const SPEEDS  = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 8.0];
+const SEEK_SEC = 3;
 
 // ==========================================
 // 상태
 // ==========================================
-let madeEvents   = [];   // { in, out }
-let missedEvents = [];
-let allMarkers   = [];   // { type, in, out }
-let redoStack    = [];   // undo된 마커 보관
 
-let speedIdx     = 2;   // 기본 1.0x
+// 영상 큐
+let fileQueue    = [];   // File 객체 배열
+let currentIdx   = 0;   // 현재 영상 인덱스
+
+// 마커: 영상별로 분리 저장 { fileName, madeEvents, missedEvents, allMarkers, fps }
+let videoData    = [];
+
+// 현재 영상 마커 (편의용 포인터)
+let madeEvents   = [];
+let missedEvents = [];
+let allMarkers   = [];
+let redoStack    = [];
+
+let speedIdx     = 2;
 let pendingIn    = null;
-let fileName     = "";
+let fileName     = '';
 let duration     = 0;
 let estimatedFps = 60;
-let fpsReady     = false;   // FPS 측정 완료 여부
-
-let flashTimer = null;
+let fpsReady     = false;
+let flashTimer   = null;
 
 // ==========================================
 // 키 설정
 // ==========================================
 let KEYS = {
-  play:   ' ',
-  back:   'j',
-  fwd:    'l',
-  slower: '[',
-  faster: ']',
-  in:     'i',
-  made:   'a',
-  missed: 'x',
-  undo:   'z',
-  save:   's',
+  play:'   ', back:'j', fwd:'l', slower:'[', faster:']',
+  in:'i', made:'a', missed:'x', undo:'z', next:'n', save:'s',
 };
+// 공백 수정
+KEYS.play = ' ';
 
 const settPanel = document.getElementById('settings-panel');
 let _keyHandler = null;
 
 document.getElementById('btn-settings').addEventListener('click', openSettings);
 document.getElementById('sp-cancel').addEventListener('click', closeSettings);
-document.getElementById('sp-save').addEventListener('click', saveSettings);
+document.getElementById('sp-save-settings').addEventListener('click', saveSettings);
 
 function openSettings() {
   document.querySelectorAll('.sp-key-input').forEach(inp => {
@@ -547,13 +459,11 @@ function openSettings() {
   settPanel.classList.add('open');
   setupKeyListeners();
 }
-
 function closeSettings() {
   document.querySelectorAll('.sp-key-input').forEach(i => i.classList.remove('listening'));
   if (_keyHandler) { document.removeEventListener('keydown', _keyHandler); _keyHandler = null; }
   settPanel.classList.remove('open');
 }
-
 function setupKeyListeners() {
   if (_keyHandler) document.removeEventListener('keydown', _keyHandler);
   document.querySelectorAll('.sp-key-input').forEach(inp => {
@@ -568,25 +478,22 @@ function setupKeyListeners() {
     const listening = document.querySelector('.sp-key-input.listening');
     if (!listening) return;
     e.preventDefault(); e.stopPropagation();
-    const display = e.key === ' ' ? 'Space' : e.key.toUpperCase();
-    listening.value = display;
+    listening.value = e.key === ' ' ? 'Space' : e.key.toUpperCase();
     listening.dataset.pending = e.key;
     listening.classList.remove('listening');
   };
   document.addEventListener('keydown', _keyHandler);
 }
-
 function saveSettings() {
   document.querySelectorAll('.sp-key-input').forEach(inp => {
     const raw = inp.dataset.pending || inp.value;
-    KEYS[inp.dataset.action] = raw === 'Space' || raw === 'SPACE' ? ' ' : raw.toLowerCase();
+    KEYS[inp.dataset.action] = (raw === 'Space' || raw === 'SPACE') ? ' ' : raw.toLowerCase();
     delete inp.dataset.pending;
   });
   updateCtrlLabels();
   closeSettings();
   flash('✅ 설정 저장됨', 'var(--accent)');
 }
-
 function updateCtrlLabels() {
   const fmt = k => k === ' ' ? 'Space' : k.toUpperCase();
   document.getElementById('lbl-play').textContent   = fmt(KEYS.play);
@@ -599,244 +506,274 @@ function updateCtrlLabels() {
   document.getElementById('lbl-missed').textContent = fmt(KEYS.missed);
   document.getElementById('lbl-undo').textContent   = fmt(KEYS.undo);
   document.getElementById('lbl-redo').textContent   = fmt(KEYS.undo);
+  document.getElementById('lbl-next').textContent   = fmt(KEYS.next);
   document.getElementById('lbl-save').textContent   = fmt(KEYS.save);
 }
 
+// ==========================================
+// 업로드 화면
+// ==========================================
+const video    = document.getElementById('video');
+const fileInput= document.getElementById('file-input');
+const dropZone = document.getElementById('drop-zone');
+const uploadScr= document.getElementById('upload-screen');
+const editor   = document.getElementById('editor');
 
-function saveSession() {
-  try {
-    sessionStorage.setItem('bm_made',     JSON.stringify(madeEvents));
-    sessionStorage.setItem('bm_missed',   JSON.stringify(missedEvents));
-    sessionStorage.setItem('bm_markers',  JSON.stringify(allMarkers));
-    sessionStorage.setItem('bm_filename', fileName);   // 항상 현재 파일명으로 덮어씀
-  } catch(e) {}
+function handleFiles(files) {
+  fileQueue = Array.from(files).sort((a,b) => a.name.localeCompare(b.name));
+  renderFileQueue();
+  document.getElementById('btn-start').style.display = fileQueue.length ? 'block' : 'none';
 }
 
-function loadSession() {
-  try {
-    madeEvents   = JSON.parse(sessionStorage.getItem('bm_made')    || '[]');
-    missedEvents = JSON.parse(sessionStorage.getItem('bm_missed')  || '[]');
-    allMarkers   = JSON.parse(sessionStorage.getItem('bm_markers') || '[]');
-  } catch(e) {}
+function renderFileQueue() {
+  const el = document.getElementById('file-queue');
+  el.innerHTML = '';
+  fileQueue.forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className = 'fq-item';
+    div.id = `fq-${i}`;
+    div.innerHTML = `<span class="fq-num">${i+1}</span><span class="fq-name">${f.name}</span><span class="fq-status">대기중</span>`;
+    el.appendChild(div);
+  });
 }
 
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  handleFiles(e.dataTransfer.files);
+});
+document.getElementById('btn-start').addEventListener('click', () => {
+  if (!fileQueue.length) return;
+  // videoData 초기화
+  videoData = fileQueue.map(f => ({
+    fileName: f.name, madeEvents:[], missedEvents:[], allMarkers:[], fps:60
+  }));
+  currentIdx = 0;
+  uploadScr.style.display = 'none';
+  editor.style.display    = 'flex';
+  loadVideoAt(0);
+});
 
-const video      = document.getElementById('video');
-const fileInput  = document.getElementById('file-input');
-const dropZone   = document.getElementById('drop-zone');
-const uploadScr  = document.getElementById('upload-screen');
-const editor     = document.getElementById('editor');
+// ==========================================
+// 영상 로드
+// ==========================================
+function loadVideoAt(idx) {
+  if (idx >= fileQueue.length) {
+    // 모든 영상 완료 → 저장 안내
+    flash('🎉 모든 영상 완료! S로 저장하세요', 'var(--accent)');
+    return;
+  }
+  currentIdx = idx;
+  const file = fileQueue[idx];
 
-function loadFile(file) {
-  if (!file) return;
-  fileName = file.name;
-  const url = URL.createObjectURL(file);
-  video.src = url;
+  // 현재 영상 데이터 포인터 연결
+  madeEvents   = videoData[idx].madeEvents;
+  missedEvents = videoData[idx].missedEvents;
+  allMarkers   = videoData[idx].allMarkers;
+  redoStack    = [];
+  pendingIn    = null;
+  fileName     = file.name;
+
+  video.src = URL.createObjectURL(file);
   video.load();
+
   video.onloadedmetadata = () => {
     duration = video.duration;
-
-    // FPS 추정: 브라우저에서 정확한 FPS를 못 가져오므로
-    // 영상 파일명으로 추정 (MOV/MP4 아이폰은 보통 59.94 또는 29.97)
-    // 더 정확하게는 재생 중 requestVideoFrameCallback으로 측정
     estimatedFps = 60;
     fpsReady     = false;
 
     if (fileName.toLowerCase().includes('30')) estimatedFps = 30;
 
+    document.getElementById('tb-fps').textContent = 'FPS 측정중...';
+    document.getElementById('tb-fps').style.color = 'var(--muted)';
+
     if ('requestVideoFrameCallback' in video) {
       let lastTime = null, frameCount = 0;
-      const measure = (now, meta) => {
+      const measure = (now) => {
         if (lastTime !== null) {
           frameCount++;
           if (frameCount >= 10) {
-            const measuredFps = 1000 / ((now - lastTime) / frameCount);
-            if      (measuredFps > 55) estimatedFps = 60;
-            else if (measuredFps > 27) estimatedFps = 30;
-            else if (measuredFps > 23) estimatedFps = 24;
+            const measured = 1000 / ((now - lastTime) / frameCount);
+            if      (measured > 55) estimatedFps = 60;
+            else if (measured > 27) estimatedFps = 30;
+            else if (measured > 23) estimatedFps = 24;
             fpsReady = true;
-            console.log(`📹 측정 FPS: ${measuredFps.toFixed(2)} → ${estimatedFps}`);
+            videoData[idx].fps = estimatedFps;
             document.getElementById('tb-fps').textContent = `${estimatedFps}fps`;
             document.getElementById('tb-fps').style.color = 'var(--in-pt)';
             return;
           }
-        } else {
-          lastTime = now;
-        }
+        } else { lastTime = now; }
         video.requestVideoFrameCallback(measure);
       };
       video.requestVideoFrameCallback(measure);
     } else {
       fpsReady = true;
-      document.getElementById('tb-fps').textContent = `${estimatedFps}fps (기본값)`;
-      document.getElementById('tb-fps').style.color = 'var(--muted)';
+      videoData[idx].fps = estimatedFps;
+      document.getElementById('tb-fps').textContent = `${estimatedFps}fps`;
     }
-    uploadScr.style.display = 'none';
-    editor.style.display    = 'flex';
+
     document.getElementById('tb-filename').textContent = fileName;
     video.playbackRate = SPEEDS[speedIdx];
-
-    // 같은 파일이면 세션 복구
-    const prevFn = sessionStorage.getItem('bm_filename');
-    if (prevFn === fileName) {
-      loadSession();
-      renderMarkers();
-      const total = madeEvents.length + missedEvents.length;
-      if (total) flash(`↪ 이전 작업 복구 (성공${madeEvents.length} 실패${missedEvents.length})`, 'var(--in-pt)');
-    } else {
-      sessionStorage.clear();
-      saveSession();
-    }
-
+    renderVideoProgress();
+    renderMarkers();
     updateUI();
     video.play();
+
+    // 파일 큐 상태 업데이트
+    document.querySelectorAll('.fq-item').forEach((el, i) => {
+      el.className = 'fq-item' + (i === idx ? ' active' : i < idx ? ' done' : '');
+      el.querySelector('.fq-status').textContent = i === idx ? '▶ 진행중' : i < idx ? '✅ 완료' : '대기중';
+    });
   };
 }
 
-fileInput.addEventListener('change', e => loadFile(e.target.files[0]));
-dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('drag');
-  loadFile(e.dataTransfer.files[0]);
-});
+// ==========================================
+// 다음 영상으로 이동
+// ==========================================
+function goNextVideo() {
+  if (currentIdx >= fileQueue.length - 1) {
+    flash('마지막 영상이에요! S로 저장하세요', 'var(--accent)');
+    return;
+  }
+  // 현재 영상 완료 표시
+  const cur = document.getElementById(`fq-${currentIdx}`);
+  if (cur) { cur.className = 'fq-item done'; cur.querySelector('.fq-status').textContent = '✅ 완료'; }
+
+  loadVideoAt(currentIdx + 1);
+  flash(`▶ ${currentIdx + 2}번째 영상`, 'var(--in-pt)');
+}
+
+// ==========================================
+// 영상 진행 표시
+// ==========================================
+function renderVideoProgress() {
+  const bar = document.getElementById('video-progress-bar');
+  bar.innerHTML = '';
+  fileQueue.forEach((f, i) => {
+    if (i > 0) {
+      const arrow = document.createElement('span');
+      arrow.className = 'vp-arrow'; arrow.textContent = '▶';
+      bar.appendChild(arrow);
+    }
+    const item = document.createElement('div');
+    item.className = 'vp-item' + (i === currentIdx ? ' active' : i < currentIdx ? ' done' : '');
+    item.textContent = `${i+1}. ${f.name}`;
+    bar.appendChild(item);
+  });
+}
 
 // ==========================================
 // 진행바
 // ==========================================
-const timeline  = document.getElementById('timeline');
-const tlProg    = document.getElementById('tl-progress');
-const tlCursor  = document.getElementById('tl-cursor');
-const tlInCur   = document.getElementById('tl-in-cursor');
-const tlTooltip = document.getElementById('tl-tooltip');
+const timeline = document.getElementById('timeline');
+const tlProg   = document.getElementById('tl-progress');
+const tlCursor = document.getElementById('tl-cursor');
+const tlInCur  = document.getElementById('tl-in-cursor');
+const tlTooltip= document.getElementById('tl-tooltip');
 
-function pct(t) { return duration ? (t / duration * 100) : 0; }
+function pct(t) { return duration ? t/duration*100 : 0; }
 
 function fmtSec(s) {
   s = Math.max(0, s);
-  const m = Math.floor(s / 60);
-  const sec = (s % 60).toFixed(1);
-  return `${m}:${sec.padStart(4,'0')}`;
+  const m = Math.floor(s/60);
+  return `${m}:${(s%60).toFixed(1).padStart(4,'0')}`;
 }
 
 function updateTimeline() {
   const p = pct(video.currentTime);
-  tlProg.style.width = p + '%';
+  tlProg.style.width  = p + '%';
   tlCursor.style.left = p + '%';
-
-  if (pendingIn !== null) {
-    tlInCur.style.left    = pct(pendingIn) + '%';
-    tlInCur.style.display = 'block';
-  } else {
-    tlInCur.style.display = 'none';
-  }
+  tlInCur.style.display = pendingIn !== null ? 'block' : 'none';
+  if (pendingIn !== null) tlInCur.style.left = pct(pendingIn) + '%';
 }
 
 function renderMarkers() {
-  // 진행바 마커
   document.querySelectorAll('.tl-marker').forEach(el => el.remove());
   allMarkers.forEach((m, i) => {
     const el = document.createElement('div');
-    el.className = 'tl-marker' + (i === allMarkers.length - 1 ? ' latest' : '');
-    el.style.left       = pct(m.in)  + '%';
+    el.className = 'tl-marker' + (i === allMarkers.length-1 ? ' latest' : '');
+    el.style.left       = pct(m.in) + '%';
     el.style.width      = Math.max(pct(m.out - m.in), 0.3) + '%';
     el.style.background = m.type === 'made' ? 'var(--made)' : 'var(--missed)';
     timeline.appendChild(el);
   });
 
-  // 목록 패널
   const list = document.getElementById('marker-list');
   list.innerHTML = '';
-  if (allMarkers.length === 0) {
+  if (!allMarkers.length) {
     list.innerHTML = '<div class="mk-empty">아직 마커 없음<br>A=성공 X=실패</div>';
     return;
   }
-
   allMarkers.forEach((m, i) => {
     const el = document.createElement('div');
-    el.className = 'mk-item ' + m.type + (i === allMarkers.length - 1 ? ' latest' : '');
-    el.title = '클릭하면 해당 위치로 이동';
-
-    // 연속 성공 여부 판단
+    el.className = 'mk-item ' + m.type + (i === allMarkers.length-1 ? ' latest' : '');
     const prevMade = i > 0 && allMarkers[i-1].type === 'made';
     const nextMade = i < allMarkers.length-1 && allMarkers[i+1].type === 'made';
-    const isChained = m.type === 'made' && (prevMade || nextMade);
-    const chainIcon = isChained ? '🔗' : (m.type === 'made' ? '🟢' : '🔴');
-
+    const chained  = m.type === 'made' && (prevMade || nextMade);
+    const icon     = chained ? '🔗' : m.type === 'made' ? '🟢' : '🔴';
     el.innerHTML = `
-      <div class="mk-label">${chainIcon} ${i+1}<br>${fmtSec(m.in)}→${fmtSec(m.out)}</div>
-      <button class="mk-del" data-i="${i}" title="삭제">✕</button>
+      <div class="mk-label">${icon} ${i+1}<br>${fmtSec(m.in)}→${fmtSec(m.out)}</div>
+      <button class="mk-del" data-i="${i}">✕</button>
     `;
-    // 클릭 시 해당 위치로 이동
-    el.addEventListener('click', (e) => {
+    el.addEventListener('click', e => {
       if (e.target.classList.contains('mk-del')) return;
-      video.currentTime = m.in;
-      video.pause();
+      video.currentTime = m.in; video.pause();
     });
     list.appendChild(el);
   });
-
-  // 개별 삭제
   list.querySelectorAll('.mk-del').forEach(btn => {
     btn.addEventListener('click', () => {
       const i = +btn.dataset.i;
-      const removed = allMarkers.splice(i, 1)[0];
-      redoStack.push(removed);
-      if (removed.type === 'made'   && madeEvents.length)   madeEvents.splice(i - (allMarkers.length - madeEvents.length + 1), 1);
-      if (removed.type === 'missed' && missedEvents.length) missedEvents.splice(i - (allMarkers.length - missedEvents.length + 1), 1);
-      // 간단하게 재계산
-      madeEvents   = allMarkers.filter(m => m.type === 'made')  .map(m => ({ in: m.in, out: m.out }));
-      missedEvents = allMarkers.filter(m => m.type === 'missed').map(m => ({ in: m.in, out: m.out }));
+      allMarkers.splice(i, 1);
+      madeEvents   = allMarkers.filter(m=>m.type==='made')  .map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
+      missedEvents = allMarkers.filter(m=>m.type==='missed').map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
+      videoData[currentIdx].madeEvents   = madeEvents;
+      videoData[currentIdx].missedEvents = missedEvents;
+      videoData[currentIdx].allMarkers   = allMarkers;
       renderMarkers(); updateUI(); saveSession();
       flash('↩ 삭제됨', '#aaa');
     });
   });
-
-  // 최신 마커로 스크롤
   const latest = list.querySelector('.latest');
-  if (latest) latest.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (latest) latest.scrollIntoView({ behavior:'smooth', block:'nearest' });
 }
 
-// 진행바 클릭/드래그
-let tlDragging = false;
-
-function seekFromMouse(e) {
-  const rect  = timeline.getBoundingClientRect();
-  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-  video.currentTime = ratio * duration;
+// 진행바 드래그
+let tlDrag = false;
+function seekMouse(e) {
+  const r = timeline.getBoundingClientRect();
+  video.currentTime = Math.max(0, Math.min(1, (e.clientX-r.left)/r.width)) * duration;
 }
-
-timeline.addEventListener('mousedown', e => { tlDragging = true; seekFromMouse(e); video.pause(); });
+timeline.addEventListener('mousedown', e => { tlDrag=true; seekMouse(e); video.pause(); });
 document.addEventListener('mousemove', e => {
-  if (tlDragging) { seekFromMouse(e); }
-  // 툴팁
-  const rect = timeline.getBoundingClientRect();
-  if (e.clientY >= rect.top - 10 && e.clientY <= rect.bottom + 10) {
-    const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-    const sec   = ratio * duration;
+  if (tlDrag) seekMouse(e);
+  const r = timeline.getBoundingClientRect();
+  if (e.clientY >= r.top-12 && e.clientY <= r.bottom+12) {
+    const ratio = Math.max(0, Math.min(1, (e.clientX-r.left)/r.width));
     tlTooltip.style.display = 'block';
-    tlTooltip.style.left    = (e.clientX - rect.left) + 'px';
-    tlTooltip.textContent   = fmtSec(sec);
-  } else {
-    tlTooltip.style.display = 'none';
-  }
+    tlTooltip.style.left    = (e.clientX-r.left) + 'px';
+    tlTooltip.textContent   = fmtSec(ratio*duration);
+  } else { tlTooltip.style.display='none'; }
 });
-document.addEventListener('mouseup',   () => { tlDragging = false; });
+document.addEventListener('mouseup', () => { tlDrag=false; });
 
 // ==========================================
 // UI 업데이트
 // ==========================================
 function updateUI() {
-  const t  = video.currentTime;
   document.getElementById('tb-time').textContent =
-    `${fmtSec(t)} / ${fmtSec(duration)}`;
+    `${fmtSec(video.currentTime)} / ${fmtSec(duration)}`;
   document.getElementById('tb-speed').textContent =
     `x${SPEEDS[speedIdx].toFixed(2)}`;
-  document.getElementById('cnt-made').textContent   = `🟢 성공: ${madeEvents.length}`;
-  document.getElementById('cnt-missed').textContent = `🔴 실패: ${missedEvents.length}`;
-  document.getElementById('in-overlay').style.display =
-    pendingIn !== null ? 'block' : 'none';
+  // 전체 마커 수 집계
+  const totalMade   = videoData.reduce((s,v)=>s+v.madeEvents.length, 0);
+  const totalMissed = videoData.reduce((s,v)=>s+v.missedEvents.length, 0);
+  document.getElementById('cnt-made').textContent   = `🟢 성공: ${totalMade}`;
+  document.getElementById('cnt-missed').textContent = `🔴 실패: ${totalMissed}`;
+  document.getElementById('in-overlay').style.display = pendingIn !== null ? 'block' : 'none';
   updateTimeline();
 }
 
@@ -847,11 +784,21 @@ video.addEventListener('timeupdate', updateUI);
 // ==========================================
 function flash(msg, color) {
   const el = document.getElementById('flash');
-  el.textContent  = msg;
-  el.style.color  = color || '#fff';
+  el.textContent = msg; el.style.color = color||'#fff';
   el.classList.add('show');
   if (flashTimer) clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => el.classList.remove('show'), 900);
+  flashTimer = setTimeout(()=>el.classList.remove('show'), 900);
+}
+
+// ==========================================
+// 세션 저장/복구
+// ==========================================
+function saveSession() {
+  try {
+    sessionStorage.setItem('bm_videodata', JSON.stringify(videoData));
+    sessionStorage.setItem('bm_files', JSON.stringify(fileQueue.map(f=>f.name)));
+    sessionStorage.setItem('bm_idx',   currentIdx);
+  } catch(e) {}
 }
 
 // ==========================================
@@ -859,34 +806,36 @@ function flash(msg, color) {
 // ==========================================
 function addMarker(type) {
   const out = video.currentTime;
-
-  // A → A 연속 성공: 직전 마커가 성공이면 그 OUT점을 IN점으로 사용
   let in_;
-  const lastMarker = allMarkers.length > 0 ? allMarkers[allMarkers.length - 1] : null;
-  if (type === 'made' && lastMarker && lastMarker.type === 'made' && pendingIn === null) {
-    in_ = lastMarker.out;   // 직전 성공 OUT점 = 이번 IN점 (끊김 없이 이어짐)
+  const lastMarker = allMarkers.length > 0 ? allMarkers[allMarkers.length-1] : null;
+
+  // 연속 성공: 직전 마커가 같은 파일의 성공 마커일 때만
+  if (type === 'made' && lastMarker && lastMarker.type === 'made'
+      && lastMarker.fileName === fileName && pendingIn === null) {
+    in_ = lastMarker.out;
     flash(`🟢🟢 연속 성공!  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
   } else {
     const pre = type === 'made' ? PRE_SECONDS : PRE_SECONDS_MISSED;
     in_ = pendingIn !== null ? pendingIn : Math.max(0, out - pre);
-    if (type === 'made') flash(`🟢 성공  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
-    else                 flash(`🔴 실패  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--missed)');
+    flash(type==='made'
+      ? `🟢 성공  ${fmtSec(in_)} ~ ${fmtSec(out)}`
+      : `🔴 실패  ${fmtSec(in_)} ~ ${fmtSec(out)}`,
+      type==='made' ? 'var(--made)' : 'var(--missed)');
   }
   pendingIn = null;
 
-  const ev = { in: in_, out };
-  if (type === 'made') {
-    madeEvents.push(ev);
-    console.log(`🟢 성공: ${fmtSec(in_)} ~ ${fmtSec(out)}  [${madeEvents.length}번째]`);
-  } else {
-    missedEvents.push(ev);
-    console.log(`🔴 실패: ${fmtSec(in_)} ~ ${fmtSec(out)}  [${missedEvents.length}번째]`);
-  }
-  allMarkers.push({ type, in: in_, out });
+  const ev = { in:in_, out, fileName };
+  if (type==='made')   madeEvents.push(ev);
+  else                 missedEvents.push(ev);
+  allMarkers.push({ type, in:in_, out, fileName });
   redoStack = [];
-  renderMarkers();
-  updateUI();
-  saveSession();
+
+  // videoData 동기화
+  videoData[currentIdx].madeEvents   = madeEvents;
+  videoData[currentIdx].missedEvents = missedEvents;
+  videoData[currentIdx].allMarkers   = allMarkers;
+
+  renderMarkers(); updateUI(); saveSession();
 }
 
 // ==========================================
@@ -894,43 +843,50 @@ function addMarker(type) {
 // ==========================================
 document.addEventListener('keydown', e => {
   if (uploadScr.style.display !== 'none') return;
-  if (settPanel && settPanel.classList.contains('open')) return;
+  if (settPanel.classList.contains('open')) return;
   if (['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
 
   const k = e.key;
-
-  if (k === KEYS.play)   { e.preventDefault(); video.paused ? video.play() : video.pause(); }
-  else if (k === KEYS.back)   { e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - SEEK_SEC); flash(`◀ -${SEEK_SEC}s`, 'var(--muted)'); }
-  else if (k === KEYS.fwd)    { e.preventDefault(); video.currentTime = Math.min(duration, video.currentTime + SEEK_SEC); flash(`▶ +${SEEK_SEC}s`, 'var(--muted)'); }
-  else if (k === KEYS.faster) { e.preventDefault(); speedIdx = Math.min(SPEEDS.length-1, speedIdx+1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`, 'var(--in-pt)'); updateUI(); }
-  else if (k === KEYS.slower) { e.preventDefault(); speedIdx = Math.max(0, speedIdx-1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`, 'var(--in-pt)'); updateUI(); }
-  else if (k === KEYS.in)     { e.preventDefault(); pendingIn = video.currentTime; flash(`📍 IN  ${fmtSec(pendingIn)}`, 'var(--in-pt)'); updateUI(); }
-  else if (k === KEYS.made)   { e.preventDefault(); addMarker('made'); }
-  else if (k === KEYS.missed) { e.preventDefault(); addMarker('missed'); }
-  else if (k === KEYS.save)   { e.preventDefault(); saveEDL(); }
-  else if (k === KEYS.undo && !e.shiftKey) {
+  if      (k===KEYS.play)                { e.preventDefault(); video.paused?video.play():video.pause(); }
+  else if (k===KEYS.back)                { e.preventDefault(); video.currentTime=Math.max(0,video.currentTime-SEEK_SEC); flash(`◀ -${SEEK_SEC}s`,'var(--muted)'); }
+  else if (k===KEYS.fwd)                 { e.preventDefault(); video.currentTime=Math.min(duration,video.currentTime+SEEK_SEC); flash(`▶ +${SEEK_SEC}s`,'var(--muted)'); }
+  else if (k===KEYS.faster)              { e.preventDefault(); speedIdx=Math.min(SPEEDS.length-1,speedIdx+1); video.playbackRate=SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); }
+  else if (k===KEYS.slower)              { e.preventDefault(); speedIdx=Math.max(0,speedIdx-1); video.playbackRate=SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); }
+  else if (k===KEYS.in)                  { e.preventDefault(); pendingIn=video.currentTime; flash(`📍 IN  ${fmtSec(pendingIn)}`,'var(--in-pt)'); updateUI(); }
+  else if (k===KEYS.made)                { e.preventDefault(); addMarker('made'); }
+  else if (k===KEYS.missed)              { e.preventDefault(); addMarker('missed'); }
+  else if (k===KEYS.next)                { e.preventDefault(); goNextVideo(); }
+  else if (k===KEYS.save)                { e.preventDefault(); saveEDL(); }
+  else if (k===KEYS.undo && !e.shiftKey) {
     e.preventDefault();
-    if (!allMarkers.length) { flash('취소할 마커 없음', '#888'); return; }
+    if (!allMarkers.length) { flash('취소할 마커 없음','#888'); return; }
     const last = allMarkers.pop();
     redoStack.push(last);
-    if (last.type === 'made'   && madeEvents.length)   madeEvents.pop();
-    if (last.type === 'missed' && missedEvents.length) missedEvents.pop();
+    if (last.type==='made'   && madeEvents.length)   madeEvents.pop();
+    if (last.type==='missed' && missedEvents.length) missedEvents.pop();
     pendingIn = null;
+    videoData[currentIdx].madeEvents   = madeEvents;
+    videoData[currentIdx].missedEvents = missedEvents;
+    videoData[currentIdx].allMarkers   = allMarkers;
     renderMarkers(); updateUI(); saveSession();
-    flash('↩ 취소됨', '#aaa');
+    flash('↩ 취소됨','#aaa');
   }
-  else if (k === KEYS.undo && e.shiftKey) {
+  else if (k===KEYS.undo && e.shiftKey) {
     e.preventDefault();
-    if (!redoStack.length) { flash('복구할 항목 없음', '#888'); return; }
+    if (!redoStack.length) { flash('복구할 항목 없음','#888'); return; }
     const redo = redoStack.pop();
     allMarkers.push(redo);
-    if (redo.type === 'made')   madeEvents.push({ in: redo.in, out: redo.out });
-    if (redo.type === 'missed') missedEvents.push({ in: redo.in, out: redo.out });
+    if (redo.type==='made')   madeEvents.push({in:redo.in,out:redo.out,fileName:redo.fileName});
+    if (redo.type==='missed') missedEvents.push({in:redo.in,out:redo.out,fileName:redo.fileName});
+    videoData[currentIdx].madeEvents   = madeEvents;
+    videoData[currentIdx].missedEvents = missedEvents;
+    videoData[currentIdx].allMarkers   = allMarkers;
     renderMarkers(); updateUI(); saveSession();
-    flash('↪ 복구됨', 'var(--in-pt)');
+    flash('↪ 복구됨','var(--in-pt)');
   }
 });
 
+document.getElementById('btn-next-vid').addEventListener('click', goNextVideo);
 document.getElementById('btn-save').addEventListener('click', saveEDL);
 
 // ==========================================
@@ -939,14 +895,15 @@ document.getElementById('btn-save').addEventListener('click', saveEDL);
 function toTC(sec, fps) {
   sec = Math.max(0, sec);
   const totalF = Math.round(sec * fps);
-  const f = totalF % Math.round(fps);
-  const s = Math.floor(totalF / Math.round(fps)) % 60;
-  const m = Math.floor(totalF / Math.round(fps) / 60) % 60;
-  const h = Math.floor(totalF / Math.round(fps) / 3600);
+  const fpsR   = Math.round(fps);
+  const f = totalF % fpsR;
+  const s = Math.floor(totalF/fpsR) % 60;
+  const m = Math.floor(totalF/fpsR/60) % 60;
+  const h = Math.floor(totalF/fpsR/3600);
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;
 }
 
-function buildEDL(events, title, fps) {
+function buildEDL(events, title, fps, clipFileName) {
   let lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
   let recIn = 0;
   events.forEach((ev, i) => {
@@ -954,9 +911,9 @@ function buildEDL(events, title, fps) {
     lines.push(
       `${String(i+1).padStart(3,'0')}  AX  V  C  ` +
       `${toTC(ev.in, fps)} ${toTC(ev.out, fps)} ` +
-      `${toTC(recIn, fps)} ${toTC(recIn + dur, fps)}`
+      `${toTC(recIn, fps)} ${toTC(recIn+dur, fps)}`
     );
-    lines.push(`* FROM CLIP NAME: ${fileName}`);
+    lines.push(`* FROM CLIP NAME: ${ev.fileName || clipFileName}`);
     lines.push('');
     recIn += dur;
   });
@@ -964,45 +921,67 @@ function buildEDL(events, title, fps) {
 }
 
 function downloadText(content, name) {
-  const blob = new Blob([content], { type: 'text/plain' });
-  const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content],{type:'text/plain'}));
   a.download = name;
   a.click();
 }
 
 function saveEDL() {
-  if (!madeEvents.length && !missedEvents.length) {
-    flash('마커가 없습니다!', '#f88');
-    return;
-  }
-  if (!fpsReady) {
-    flash('⏳ FPS 측정 중... 잠시 후 다시 시도하세요', '#f88');
-    return;
-  }
-  if (!fileName) {
-    flash('파일명 오류! 영상을 다시 업로드해주세요', '#f88');
-    return;
-  }
-  const fps = estimatedFps;
+  const totalMade   = videoData.reduce((s,v)=>s+v.madeEvents.length, 0);
+  const totalMissed = videoData.reduce((s,v)=>s+v.missedEvents.length, 0);
+  if (!totalMade && !totalMissed) { flash('마커가 없습니다!','#f88'); return; }
+  if (!fpsReady) { flash('⏳ FPS 측정 중...','#f88'); return; }
 
   const now = new Date();
   const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
 
-  console.log(`💾 EDL 저장 | 파일: ${fileName} | FPS: ${fps} | 날짜: ${dateStr}`);
+  // 영상별 EDL 저장 여부 선택:
+  // 영상이 1개면 기존처럼, 여러 개면 합쳐서 하나로
+  if (fileQueue.length === 1) {
+    const vd  = videoData[0];
+    const fps = vd.fps;
+    if (vd.madeEvents.length)   downloadText(buildEDL(vd.madeEvents,   'SHOTS_MADE',   fps, vd.fileName), `${dateStr}_shots_made.edl`);
+    setTimeout(() => {
+      if (vd.missedEvents.length) downloadText(buildEDL(vd.missedEvents, 'SHOTS_MISSED', fps, vd.fileName), `${dateStr}_shots_missed.edl`);
+    }, 300);
+  } else {
+    // 여러 영상: 성공/실패 각각 하나로 합쳐서 저장
+    const allMade   = videoData.flatMap(vd => vd.madeEvents);
+    const allMissed = videoData.flatMap(vd => vd.missedEvents);
+    // fps는 첫 영상 기준 (보통 다 같음)
+    const fps = videoData[0].fps;
 
-  if (madeEvents.length) {
-    downloadText(buildEDL(madeEvents, 'SHOTS_MADE', fps), `${dateStr}_shots_made.edl`);
-  }
-  setTimeout(() => {
-    if (missedEvents.length) {
-      downloadText(buildEDL(missedEvents, 'SHOTS_MISSED', fps), `${dateStr}_shots_missed.edl`);
+    // 합쳐진 EDL 빌드 (각 이벤트에 fileName 포함)
+    function buildMergedEDL(events, title) {
+      let lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
+      let recIn = 0;
+      events.forEach((ev, i) => {
+        // 영상별 fps 사용
+        const vd  = videoData.find(v=>v.fileName===ev.fileName) || videoData[0];
+        const fps = vd.fps;
+        const dur = ev.out - ev.in;
+        lines.push(
+          `${String(i+1).padStart(3,'0')}  AX  V  C  ` +
+          `${toTC(ev.in, fps)} ${toTC(ev.out, fps)} ` +
+          `${toTC(recIn, fps)} ${toTC(recIn+dur, fps)}`
+        );
+        lines.push(`* FROM CLIP NAME: ${ev.fileName}`);
+        lines.push('');
+        recIn += dur;
+      });
+      return lines.join('\n');
     }
-  }, 300);
 
-  const total   = madeEvents.length + missedEvents.length;
-  const pctMade = total ? (madeEvents.length / total * 100).toFixed(1) : 0;
-  flash(`💾 ${fileName} 저장완료  성공률 ${pctMade}%`, 'var(--accent)');
+    if (allMade.length)   downloadText(buildMergedEDL(allMade,   'SHOTS_MADE'),   `${dateStr}_shots_made.edl`);
+    setTimeout(() => {
+      if (allMissed.length) downloadText(buildMergedEDL(allMissed, 'SHOTS_MISSED'), `${dateStr}_shots_missed.edl`);
+    }, 300);
+  }
+
+  const pct = totalMade+totalMissed ? (totalMade/(totalMade+totalMissed)*100).toFixed(1) : 0;
+  flash(`💾 저장완료  성공률 ${pct}%`, 'var(--accent)');
+  console.log(`💾 EDL 저장 | 성공:${totalMade} 실패:${totalMissed}`);
 }
 </script>
 </body>
