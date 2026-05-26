@@ -617,6 +617,19 @@ function loadVideoAt(idx) {
 
     document.getElementById('tb-filename').textContent = fileName;
     video.playbackRate = SPEEDS[speedIdx];
+
+    // 세션 복구: 저장된 파일명 목록이 현재와 같으면 복구
+    const savedNames = JSON.parse(sessionStorage.getItem('bm_filenames') || '[]');
+    const sameFiles  = fileQueue.every((f,i) => savedNames[i] === f.name);
+    if (sameFiles) {
+      loadSession(idx);
+      madeEvents   = videoData[idx].madeEvents;
+      missedEvents = videoData[idx].missedEvents;
+      allMarkers   = videoData[idx].allMarkers;
+      const total  = madeEvents.length + missedEvents.length;
+      if (total) flash(`↪ 이전 작업 복구 (${total}개)`, 'var(--in-pt)');
+    }
+
     renderVideoProgress();
     renderMarkers();
     updateUI();
@@ -796,8 +809,19 @@ function flash(msg, color) {
 function saveSession() {
   try {
     sessionStorage.setItem('bm_videodata', JSON.stringify(videoData));
-    sessionStorage.setItem('bm_files', JSON.stringify(fileQueue.map(f=>f.name)));
-    sessionStorage.setItem('bm_idx',   currentIdx);
+    sessionStorage.setItem('bm_filenames', JSON.stringify(fileQueue.map(f=>f.name)));
+    sessionStorage.setItem('bm_idx',       String(currentIdx));
+  } catch(e) {}
+}
+
+function loadSession(idx) {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('bm_videodata') || '[]');
+    if (saved[idx]) {
+      videoData[idx].madeEvents   = saved[idx].madeEvents   || [];
+      videoData[idx].missedEvents = saved[idx].missedEvents || [];
+      videoData[idx].allMarkers   = saved[idx].allMarkers   || [];
+    }
   } catch(e) {}
 }
 
