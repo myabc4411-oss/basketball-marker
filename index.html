@@ -111,8 +111,18 @@
     white-space:nowrap; flex-shrink:0;
   }
   .vp-item.active { border-color:var(--accent); color:var(--accent); background:rgba(245,166,35,.08); }
-  .vp-item.done   { border-color:var(--made);   color:var(--made);   background:rgba(60,255,160,.06); }
+  .vp-item.done   { border-color:var(--made);   color:var(--made);   background:rgba(60,255,160,.06); cursor:pointer; }
+  .vp-item.done:hover { opacity:.8; }
   .vp-arrow { color:var(--border); font-size:0.7rem; }
+
+  /* 파일 큐 드래그 */
+  .fq-drag-handle { color:var(--muted); cursor:grab; padding:0 6px 0 0; font-size:0.9rem; }
+  .fq-drag-handle:active { cursor:grabbing; }
+  .fq-item.dragging  { opacity:.3; border-style:dashed; }
+  .fq-item.drag-over { border-color:var(--accent); background:rgba(245,166,35,.1); }
+
+  /* 이전 영상 버튼 */
+  .btn.prev { border-color:#444; color:#888; }
 
   /* 비디오 + 사이드패널 */
   #video-wrap {
@@ -370,6 +380,7 @@
     <div class="btn cancel"><span id="lbl-undo">Z</span> 취소</div>
     <div class="btn cancel">Shift+<span id="lbl-redo">Z</span> 복구</div>
     <div class="sep"></div>
+    <div class="btn prev" id="btn-prev-vid"><span id="lbl-prev">P</span> 이전 영상</div>
     <div class="btn next" id="btn-next-vid"><span id="lbl-next">N</span> 다음 영상</div>
     <div class="btn save" id="btn-save"><span id="lbl-save">S</span> EDL 저장</div>
   </div>
@@ -391,6 +402,7 @@
     <div class="sp-row"><div class="sp-label">슛 성공</div>    <input class="sp-key-input" data-action="made"   readonly value="a"></div>
     <div class="sp-row"><div class="sp-label">슛 실패</div>    <input class="sp-key-input" data-action="missed" readonly value="x"></div>
     <div class="sp-row"><div class="sp-label">취소</div>       <input class="sp-key-input" data-action="undo"   readonly value="z"></div>
+    <div class="sp-row"><div class="sp-label">이전 영상</div>  <input class="sp-key-input" data-action="prev"   readonly value="p"></div>
     <div class="sp-row"><div class="sp-label">다음 영상</div>  <input class="sp-key-input" data-action="next"   readonly value="n"></div>
     <div class="sp-row"><div class="sp-label">EDL 저장</div>   <input class="sp-key-input" data-action="save"   readonly value="s"></div>
     <div class="sp-footer">
@@ -438,11 +450,9 @@ let flashTimer   = null;
 // 키 설정
 // ==========================================
 let KEYS = {
-  play:'   ', back:'j', fwd:'l', slower:'[', faster:']',
-  in:'i', made:'a', missed:'x', undo:'z', next:'n', save:'s',
+  play:' ', back:'j', fwd:'l', slower:'[', faster:']',
+  in:'i', made:'a', missed:'x', undo:'z', prev:'p', next:'n', save:'s',
 };
-// 공백 수정
-KEYS.play = ' ';
 
 const settPanel = document.getElementById('settings-panel');
 let _keyHandler = null;
@@ -506,6 +516,7 @@ function updateCtrlLabels() {
   document.getElementById('lbl-missed').textContent = fmt(KEYS.missed);
   document.getElementById('lbl-undo').textContent   = fmt(KEYS.undo);
   document.getElementById('lbl-redo').textContent   = fmt(KEYS.undo);
+  document.getElementById('lbl-prev').textContent   = fmt(KEYS.prev);
   document.getElementById('lbl-next').textContent   = fmt(KEYS.next);
   document.getElementById('lbl-save').textContent   = fmt(KEYS.save);
 }
@@ -530,9 +541,35 @@ function renderFileQueue() {
   el.innerHTML = '';
   fileQueue.forEach((f, i) => {
     const div = document.createElement('div');
-    div.className = 'fq-item';
-    div.id = `fq-${i}`;
-    div.innerHTML = `<span class="fq-num">${i+1}</span><span class="fq-name">${f.name}</span><span class="fq-status">대기중</span>`;
+    div.className   = 'fq-item';
+    div.id          = `fq-${i}`;
+    div.draggable   = true;
+    div.dataset.idx = i;
+    div.innerHTML   = `
+      <span class="fq-drag-handle" title="드래그로 순서 변경">⠿</span>
+      <span class="fq-num">${i+1}</span>
+      <span class="fq-name">${f.name}</span>
+      <span class="fq-status">대기중</span>
+    `;
+    // 드래그 이벤트
+    div.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', i);
+      div.classList.add('dragging');
+    });
+    div.addEventListener('dragend',  () => div.classList.remove('dragging'));
+    div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
+    div.addEventListener('dragleave',() => div.classList.remove('drag-over'));
+    div.addEventListener('drop', e => {
+      e.preventDefault();
+      div.classList.remove('drag-over');
+      const fromIdx = +e.dataTransfer.getData('text/plain');
+      const toIdx   = +div.dataset.idx;
+      if (fromIdx === toIdx) return;
+      // 순서 변경
+      const moved = fileQueue.splice(fromIdx, 1)[0];
+      fileQueue.splice(toIdx, 0, moved);
+      renderFileQueue();
+    });
     el.appendChild(div);
   });
 }
@@ -644,17 +681,19 @@ function loadVideoAt(idx) {
 }
 
 // ==========================================
-// 다음 영상으로 이동
+// 이전/다음 영상으로 이동
 // ==========================================
+function goPrevVideo() {
+  if (currentIdx <= 0) { flash('첫 번째 영상이에요', '#888'); return; }
+  loadVideoAt(currentIdx - 1);
+  flash(`◀ ${currentIdx}번째 영상`, 'var(--in-pt)');
+}
+
 function goNextVideo() {
   if (currentIdx >= fileQueue.length - 1) {
     flash('마지막 영상이에요! S로 저장하세요', 'var(--accent)');
     return;
   }
-  // 현재 영상 완료 표시
-  const cur = document.getElementById(`fq-${currentIdx}`);
-  if (cur) { cur.className = 'fq-item done'; cur.querySelector('.fq-status').textContent = '✅ 완료'; }
-
   loadVideoAt(currentIdx + 1);
   flash(`▶ ${currentIdx + 2}번째 영상`, 'var(--in-pt)');
 }
@@ -674,6 +713,11 @@ function renderVideoProgress() {
     const item = document.createElement('div');
     item.className = 'vp-item' + (i === currentIdx ? ' active' : i < currentIdx ? ' done' : '');
     item.textContent = `${i+1}. ${f.name}`;
+    item.title = i !== currentIdx ? '클릭해서 이 영상으로 이동' : '';
+    // 다른 영상 클릭 시 해당 영상으로 이동
+    if (i !== currentIdx) {
+      item.addEventListener('click', () => loadVideoAt(i));
+    }
     bar.appendChild(item);
   });
 }
@@ -879,6 +923,7 @@ document.addEventListener('keydown', e => {
   else if (k===KEYS.in)                  { e.preventDefault(); pendingIn=video.currentTime; flash(`📍 IN  ${fmtSec(pendingIn)}`,'var(--in-pt)'); updateUI(); }
   else if (k===KEYS.made)                { e.preventDefault(); addMarker('made'); }
   else if (k===KEYS.missed)              { e.preventDefault(); addMarker('missed'); }
+  else if (k===KEYS.prev)                { e.preventDefault(); goPrevVideo(); }
   else if (k===KEYS.next)                { e.preventDefault(); goNextVideo(); }
   else if (k===KEYS.save)                { e.preventDefault(); saveEDL(); }
   else if (k===KEYS.undo && !e.shiftKey) {
@@ -910,6 +955,7 @@ document.addEventListener('keydown', e => {
   }
 });
 
+document.getElementById('btn-prev-vid').addEventListener('click', goPrevVideo);
 document.getElementById('btn-next-vid').addEventListener('click', goNextVideo);
 document.getElementById('btn-save').addEventListener('click', saveEDL);
 
