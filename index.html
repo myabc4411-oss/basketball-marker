@@ -938,7 +938,7 @@ document.getElementById('btn-save').addEventListener('click', saveEDL);
 // ==========================================
 function toTC(sec, fps) {
   sec = Math.max(0, sec);
-  const totalF = Math.floor(sec * fps);
+  const totalF = Math.round(sec * fps);
   const f = totalF % Math.round(fps);
   const s = Math.floor(totalF / Math.round(fps)) % 60;
   const m = Math.floor(totalF / Math.round(fps) / 60) % 60;
