@@ -181,6 +181,23 @@
     pointer-events:none; display:none;
   }
 
+  /* 점수판 미리보기 (오른쪽 상단) */
+  #score-overlay {
+    position:absolute; top:12px; right:14px;
+    text-align:right; line-height:1.35; white-space:pre;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:1.25rem; font-weight:700; color:#fff;
+    text-shadow:0 0 5px #000, 0 2px 12px #000;
+    pointer-events:none; display:none;
+  }
+  .sp-num {
+    background:#1a1a28; border:1px solid var(--border); border-radius:6px;
+    padding:4px 10px; width:120px; text-align:right;
+    font-family:'IBM Plex Mono',monospace; font-size:.8rem; font-weight:700;
+    color:var(--accent); outline:none;
+  }
+  .sp-num:focus { border-color:var(--accent); }
+
   /* 마커 사이드 패널 */
   #marker-side {
     width:160px; flex-shrink:0; background:var(--surface);
@@ -390,6 +407,7 @@
       <div id="flash"></div>
       <div id="in-overlay">📍 IN점 지정됨 — A 또는 X 로 확정</div>
       <div id="count-overlay" class="only-count"></div>
+      <div id="score-overlay"></div>
     </div>
     <div id="marker-side">
       <div id="marker-side-title">마커 목록</div>
@@ -451,6 +469,11 @@
     <div class="sp-row"><div class="sp-label">모드 전환 (슛 ↔ 카운트)</div><input class="sp-key-input" data-action="mode"  readonly value="m"></div>
     <div class="sp-row"><div class="sp-label">카운트 +1 (자막)</div>        <input class="sp-key-input" data-action="count" readonly value="c"></div>
     <div class="sp-row"><div class="sp-label">영상마다 1부터 다시 시작</div><input type="checkbox" class="sp-check" id="opt-count-reset"></div>
+    <div class="sp-sec-title">점수판 자막 (오른쪽 상단)</div>
+    <div class="sp-row"><div class="sp-label">점수판 표시 / 자막 저장</div><input type="checkbox" class="sp-check" id="opt-score-on"></div>
+    <div class="sp-row"><div class="sp-label">목표 슛 수</div><input type="number" class="sp-num" id="opt-goal" min="1" step="1"></div>
+    <div class="sp-row"><div class="sp-label">시작 누적 (지금까지 넣은 수)</div><input type="number" class="sp-num" id="opt-start" min="0" step="1"></div>
+    <div class="sp-row"><div class="sp-label" id="opt-last-hint" style="font-size:.72rem;color:var(--muted)"></div><button class="sp-btn" id="opt-last-apply" style="padding:3px 10px;font-size:.7rem">지난 저장값 적용</button></div>
     <div class="sp-footer">
       <button class="sp-btn" id="sp-cancel">취소</button>
       <button class="sp-btn primary" id="sp-save-settings">저장</button>
@@ -501,6 +524,16 @@ let loadToken = 0;
 let fpsToken  = 0;
 let curUrl    = null;
 
+// 점수판 설정 (다음에 열어도 유지되도록 localStorage)
+let scoreOn    = true;
+let scoreGoal  = 100000;   // 목표 슛 수
+let scoreStart = 0;        // 시작 누적 (오늘 시작 전까지 넣은 수)
+function lsGet(k) { try { return localStorage.getItem(k); } catch(e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch(e) {} }
+scoreOn    = lsGet('bm_scoreon') !== '0';
+scoreGoal  = Math.max(1, parseInt(lsGet('bm_goal'), 10)  || 100000);
+scoreStart = Math.max(0, parseInt(lsGet('bm_start'), 10) || 0);
+
 try {
   if (sessionStorage.getItem('bm_mode') === 'count') mode = 'count';
   countResetPerVideo = sessionStorage.getItem('bm_countreset') === '1';
@@ -546,6 +579,20 @@ function openSettings() {
     inp.value = fmtKey(KEYS[inp.dataset.action]);
   });
   document.getElementById('opt-count-reset').checked = countResetPerVideo;
+  document.getElementById('opt-score-on').checked = scoreOn;
+  document.getElementById('opt-goal').value  = scoreGoal;
+  document.getElementById('opt-start').value = scoreStart;
+  const last = parseInt(lsGet('bm_lasttotal'), 10);
+  const hint = document.getElementById('opt-last-hint');
+  const applyBtn = document.getElementById('opt-last-apply');
+  if (isFinite(last)) {
+    hint.textContent = `지난 저장 후 누적: ${last.toLocaleString('en-US')}`;
+    applyBtn.style.display = '';
+    applyBtn.onclick = () => { document.getElementById('opt-start').value = last; };
+  } else {
+    hint.textContent = '';
+    applyBtn.style.display = 'none';
+  }
   settPanel.classList.add('open');
   setupKeyListeners();
 }
@@ -589,6 +636,12 @@ function saveSettings() {
   });
   countResetPerVideo = document.getElementById('opt-count-reset').checked;
   try { sessionStorage.setItem('bm_countreset', countResetPerVideo ? '1' : '0'); } catch(e) {}
+  scoreOn    = document.getElementById('opt-score-on').checked;
+  scoreGoal  = Math.max(1, parseInt(document.getElementById('opt-goal').value, 10)  || scoreGoal);
+  scoreStart = Math.max(0, parseInt(document.getElementById('opt-start').value, 10) || 0);
+  lsSet('bm_scoreon', scoreOn ? '1' : '0');
+  lsSet('bm_goal',    scoreGoal);
+  lsSet('bm_start',   scoreStart);
   updateCtrlLabels();
   closeSettings();
   renderMarkers(); updateUI();
@@ -935,6 +988,29 @@ function countAtTime(idx, t) {
   return n ? countBase(idx) + n : 0;
 }
 
+// ── 점수판 (남은 / 누적 / 성공 / 실패) ──
+// 앞 영상들의 성공·실패 수
+function prevTotals(idx) {
+  let m = 0, x = 0;
+  for (let i = 0; i < idx; i++) { m += videoData[i].madeEvents.length; x += videoData[i].missedEvents.length; }
+  return { m, x };
+}
+function scoreLines(made, missed) {
+  const f = n => n.toLocaleString('en-US');
+  const total = scoreStart + made;
+  const remain = Math.max(0, scoreGoal - total);   // 실패는 남은 수에 영향 없음
+  return `남은 ${f(remain)}\n누적 ${f(total)}\n성공 ${f(made)}\n실패 ${f(missed)}`;
+}
+// 현재 시각까지 누른 A/X 기준 점수판
+function scoreAtTime(idx, t) {
+  const b = prevTotals(idx);
+  let m = b.m, x = b.x;
+  videoData[idx].allMarkers.forEach(mk => {
+    if (mk.out <= t + 1e-6) { if (mk.type === 'made') m++; else x++; }
+  });
+  return scoreLines(m, x);
+}
+
 // 슛 마커 → madeEvents / missedEvents 재구성
 function syncShots() {
   madeEvents   = allMarkers.filter(m=>m.type==='made')  .map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
@@ -1077,6 +1153,11 @@ function updateUI() {
   const cn = videoData.length ? countAtTime(currentIdx, video.currentTime) : 0;
   co.textContent   = cn ? String(cn) : '';
   co.style.display = cn ? 'block' : 'none';
+
+  // 점수판 미리보기 (오른쪽 상단)
+  const so = document.getElementById('score-overlay');
+  if (scoreOn && videoData.length) { so.textContent = scoreAtTime(currentIdx, video.currentTime); so.style.display = 'block'; }
+  else so.style.display = 'none';
 
   updateTimeline();
 }
@@ -1363,6 +1444,22 @@ function buildCountSRT(idx) {
   return { content: cuesToSRT(cues), count: cues.length };
 }
 
+// 점수판 자막: 영상 원본 시간 기준. A/X를 누르는 순간마다 숫자가 바뀌고 다음 입력(또는 영상 끝)까지 유지
+function buildScoreSRT(idx) {
+  const vd = videoData[idx];
+  const b  = prevTotals(idx);
+  let m = b.m, x = b.x, t0 = 0;
+  const cues = [];
+  const push = (s, e, text) => { if (e - s >= 0.02) cues.push({ s, e, text }); };
+  vd.allMarkers.slice().sort((a, c) => a.out - c.out).forEach(ev => {
+    push(t0, ev.out, scoreLines(m, x));
+    if (ev.type === 'made') m++; else x++;
+    t0 = ev.out;
+  });
+  push(t0, (vd.duration && vd.duration > t0) ? vd.duration : t0 + 3, scoreLines(m, x));
+  return { content: cuesToSRT(cues), count: cues.length };
+}
+
 function downloadText(content, name) {
   const a = document.createElement('a');
   const url = URL.createObjectURL(new Blob([content],{type:'text/plain;charset=utf-8'}));
@@ -1420,13 +1517,24 @@ function saveEDL() {
     files.push({ name:`${dateStr}_${idxStr}${safeName(vd.fileName)}_count.srt`, content:srt.content });
   });
 
+  // 점수판 자막 (영상별, 앞 영상 수치 이어받음)
+  if (scoreOn && (totalMade + totalMissed)) {
+    videoData.forEach((vd, i) => {
+      const srt = buildScoreSRT(i);
+      if (!srt.count) return;
+      const idxStr = fileQueue.length > 1 ? `${String(i+1).padStart(2,'0')}_` : '';
+      files.push({ name:`${dateStr}_${idxStr}${safeName(vd.fileName)}_score.srt`, content:srt.content });
+    });
+  }
+  if (totalMade || totalMissed) lsSet('bm_lasttotal', scoreStart + totalMade);   // 다음에 이어서 시작할 누적값
+
   if (!files.length) { flash('저장할 내용이 없습니다!','#f88'); return; }
   files.forEach((f, i) => setTimeout(() => downloadText(f.content, f.name), i * 350));
 
   let msg;
   if (totalMade + totalMissed) {
     const pctV = (totalMade/(totalMade+totalMissed)*100).toFixed(1);
-    msg = `💾 저장완료  성공률 ${pctV}%  (파일 ${files.length}개)`;
+    msg = `💾 저장완료  성공률 ${pctV}%  누적 ${(scoreStart + totalMade).toLocaleString('en-US')}  (파일 ${files.length}개)`;
   } else {
     msg = `💾 카운트 자막 저장완료 (파일 ${files.length}개)`;
   }
