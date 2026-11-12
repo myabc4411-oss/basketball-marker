@@ -15,6 +15,7 @@
     --missed:  #ff3b3b;
     --accent:  #f5a623;
     --in-pt:   #00c8ff;
+    --count:   #c77dff;
     --text:    #e8e8f0;
     --muted:   #555570;
     --bar-h:   12px;
@@ -28,6 +29,10 @@
     height: 100vh; display: flex; flex-direction: column;
     overflow: hidden; user-select: none;
   }
+
+  /* 모드별 표시/숨김 */
+  body[data-mode="count"] .only-shot  { display:none !important; }
+  body[data-mode="shot"]  .only-count { display:none !important; }
 
   /* ── 업로드 화면 ── */
   #upload-screen {
@@ -87,14 +92,25 @@
     font-family:'IBM Plex Mono',monospace; font-size:0.75rem;
     flex-shrink:0;
   }
+  body[data-mode="count"] #topbar { border-bottom-color:var(--count); }
   .tb-title  { color:var(--accent); font-weight:700; font-size:0.88rem; }
   .tb-time   { color:var(--text); }
   .tb-speed  { color:var(--in-pt); }
   .tb-fps    { color:var(--muted); font-size:0.7rem; }
   .tb-sep    { color:var(--border); }
-  .tb-counts { display:flex; gap:12px; margin-left:auto; }
+  .tb-counts { display:flex; gap:12px; margin-left:auto; align-items:center; }
   .cnt-made   { color:var(--made); }
   .cnt-missed { color:var(--missed); }
+  .cnt-count  { color:var(--count); }
+
+  #btn-mode {
+    background:transparent; border:1px solid var(--accent); color:var(--accent);
+    border-radius:5px; padding:2px 9px; cursor:pointer;
+    font-family:'IBM Plex Mono',monospace; font-size:0.7rem; font-weight:700;
+    white-space:nowrap;
+  }
+  body[data-mode="count"] #btn-mode { border-color:var(--count); color:var(--count); }
+  #btn-mode:hover { opacity:.8; }
 
   /* 영상 진행 표시 */
   #video-progress-bar {
@@ -155,6 +171,16 @@
     font-size:0.75rem; color:var(--in-pt); display:none;
   }
 
+  /* 카운트 자막 미리보기 (카운트 모드) */
+  #count-overlay {
+    position:absolute; bottom:7%; left:50%;
+    transform:translateX(-50%);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:2.6rem; font-weight:700; color:#fff;
+    text-shadow:0 0 6px #000, 0 2px 14px #000;
+    pointer-events:none; display:none;
+  }
+
   /* 마커 사이드 패널 */
   #marker-side {
     width:160px; flex-shrink:0; background:var(--surface);
@@ -182,8 +208,10 @@
   .mk-item:hover { opacity:.75; }
   .mk-item.made   { border-color:var(--made);   color:var(--made);   background:rgba(60,255,160,.07); }
   .mk-item.missed { border-color:var(--missed); color:var(--missed); background:rgba(255,59,59,.07); }
+  .mk-item.count  { border-color:var(--count);  color:var(--count);  background:rgba(199,125,255,.08); }
   .mk-item.latest { box-shadow:0 0 0 2px currentColor; font-weight:700; }
   .mk-label { flex:1; line-height:1.5; }
+  .mk-no { opacity:.7; }
   .mk-del {
     background:none; border:none; color:inherit;
     cursor:pointer; font-size:0.72rem; padding:0; opacity:.5; flex-shrink:0;
@@ -222,6 +250,11 @@
     position:absolute; top:0; bottom:0;
     pointer-events:none; border-radius:3px; opacity:.75;
   }
+  .tl-count-tick {
+    position:absolute; top:-3px; width:3px;
+    height:calc(var(--bar-h) + 6px); background:var(--count);
+    border-radius:2px; transform:translateX(-50%); pointer-events:none;
+  }
   #tl-in-cursor {
     position:absolute; top:-7px; width:3px;
     height:calc(var(--bar-h) + 14px); background:var(--in-pt);
@@ -252,6 +285,8 @@
   .btn span { color:var(--text); font-weight:600; }
   .btn.made   { border-color:var(--made);   color:var(--made); }
   .btn.missed { border-color:var(--missed); color:var(--missed); }
+  .btn.count  { border-color:var(--count);  color:var(--count); }
+  .btn.mode   { border-color:var(--count);  color:var(--count); cursor:pointer; }
   .btn.save   { border-color:var(--accent); color:var(--accent); margin-left:auto; }
   .btn.next   { border-color:var(--in-pt);  color:var(--in-pt); }
   .btn.cancel { border-color:#444; color:#777; }
@@ -295,6 +330,7 @@
     border-color:var(--accent); color:#fff;
     box-shadow:0 0 0 2px rgba(245,166,35,.25);
   }
+  .sp-check { width:18px; height:18px; accent-color:var(--count); cursor:pointer; }
   .sp-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
   .sp-btn {
     padding:6px 18px; border-radius:7px;
@@ -306,7 +342,7 @@
   .sp-btn:hover { color:var(--text); }
 </style>
 </head>
-<body>
+<body data-mode="shot">
 
 <!-- ── 업로드 화면 ── -->
 <div id="upload-screen">
@@ -328,6 +364,8 @@
   <div id="topbar">
     <span class="tb-title">🏀 SHOT MARKER</span>
     <span class="tb-sep">|</span>
+    <button id="btn-mode" title="모드 전환">🎯 슛 모드</button>
+    <span class="tb-sep">|</span>
     <span class="tb-time" id="tb-time">0.0s / 0.0s</span>
     <span class="tb-sep">|</span>
     <span class="tb-speed" id="tb-speed">x1.0</span>
@@ -338,6 +376,7 @@
     <div class="tb-counts">
       <span class="cnt-made"   id="cnt-made">🟢 성공: 0</span>
       <span class="cnt-missed" id="cnt-missed">🔴 실패: 0</span>
+      <span class="cnt-count"  id="cnt-count">🔢 카운트: 0</span>
       <button id="btn-settings" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:0 4px;" title="키보드 설정">⚙</button>
     </div>
   </div>
@@ -350,6 +389,7 @@
       <video id="video" preload="auto"></video>
       <div id="flash"></div>
       <div id="in-overlay">📍 IN점 지정됨 — A 또는 X 로 확정</div>
+      <div id="count-overlay" class="only-count"></div>
     </div>
     <div id="marker-side">
       <div id="marker-side-title">마커 목록</div>
@@ -374,15 +414,17 @@
     <div class="btn"><span id="lbl-fwd">L</span> +3초</div>
     <div class="btn"><span id="lbl-slower">[</span><span id="lbl-faster">]</span> 배속</div>
     <div class="sep"></div>
-    <div class="btn"><span id="lbl-in">I</span> IN점</div>
-    <div class="btn made"><span id="lbl-made">A</span> 성공</div>
-    <div class="btn missed"><span id="lbl-missed">X</span> 실패</div>
+    <div class="btn only-shot"><span id="lbl-in">I</span> IN점</div>
+    <div class="btn made only-shot"><span id="lbl-made">A</span> 성공</div>
+    <div class="btn missed only-shot"><span id="lbl-missed">X</span> 실패</div>
+    <div class="btn count only-count"><span id="lbl-count">C</span> 카운트 자막 +1</div>
     <div class="btn cancel"><span id="lbl-undo">Z</span> 취소</div>
     <div class="btn cancel">Shift+<span id="lbl-redo">Z</span> 복구</div>
+    <div class="btn mode" id="btn-mode2"><span id="lbl-mode">M</span> 모드 전환</div>
     <div class="sep"></div>
     <div class="btn prev" id="btn-prev-vid"><span id="lbl-prev">P</span> 이전 영상</div>
     <div class="btn next" id="btn-next-vid"><span id="lbl-next">N</span> 다음 영상</div>
-    <div class="btn save" id="btn-save"><span id="lbl-save">S</span> EDL 저장</div>
+    <div class="btn save" id="btn-save"><span id="lbl-save">S</span> EDL·자막 저장</div>
   </div>
 
 </div>
@@ -404,7 +446,11 @@
     <div class="sp-row"><div class="sp-label">취소</div>       <input class="sp-key-input" data-action="undo"   readonly value="z"></div>
     <div class="sp-row"><div class="sp-label">이전 영상</div>  <input class="sp-key-input" data-action="prev"   readonly value="p"></div>
     <div class="sp-row"><div class="sp-label">다음 영상</div>  <input class="sp-key-input" data-action="next"   readonly value="n"></div>
-    <div class="sp-row"><div class="sp-label">EDL 저장</div>   <input class="sp-key-input" data-action="save"   readonly value="s"></div>
+    <div class="sp-row"><div class="sp-label">EDL·자막 저장</div><input class="sp-key-input" data-action="save" readonly value="s"></div>
+    <div class="sp-sec-title">카운트 자막 모드</div>
+    <div class="sp-row"><div class="sp-label">모드 전환 (슛 ↔ 카운트)</div><input class="sp-key-input" data-action="mode"  readonly value="m"></div>
+    <div class="sp-row"><div class="sp-label">카운트 +1 (자막)</div>        <input class="sp-key-input" data-action="count" readonly value="c"></div>
+    <div class="sp-row"><div class="sp-label">영상마다 1부터 다시 시작</div><input type="checkbox" class="sp-check" id="opt-count-reset"></div>
     <div class="sp-footer">
       <button class="sp-btn" id="sp-cancel">취소</button>
       <button class="sp-btn primary" id="sp-save-settings">저장</button>
@@ -420,6 +466,7 @@ const PRE_SECONDS        = 3.0;
 const PRE_SECONDS_MISSED = 0.1;
 const SPEEDS  = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 8.0];
 const SEEK_SEC = 3;
+const STD_FPS  = [24, 25, 30, 48, 50, 60, 120];
 
 // ==========================================
 // 상태
@@ -429,22 +476,35 @@ const SEEK_SEC = 3;
 let fileQueue    = [];   // File 객체 배열
 let currentIdx   = 0;   // 현재 영상 인덱스
 
-// 마커: 영상별로 분리 저장 { fileName, madeEvents, missedEvents, allMarkers, fps }
+// 마커: 영상별로 분리 저장
+// { fileName, madeEvents, missedEvents, allMarkers, countMarks, fps, fpsOk, fpsDefault, duration }
 let videoData    = [];
 
 // 현재 영상 마커 (편의용 포인터)
 let madeEvents   = [];
 let missedEvents = [];
 let allMarkers   = [];
+let countMarks   = [];   // 카운트 자막 마커 [{t}]
 let redoStack    = [];
+let countRedo    = [];
 
 let speedIdx     = 2;
 let pendingIn    = null;
 let fileName     = '';
 let duration     = 0;
-let estimatedFps = 60;
-let fpsReady     = false;
 let flashTimer   = null;
+
+let mode              = 'shot';   // 'shot' | 'count'
+let countResetPerVideo = false;   // true면 영상마다 카운트 1부터 다시
+
+let loadToken = 0;
+let fpsToken  = 0;
+let curUrl    = null;
+
+try {
+  if (sessionStorage.getItem('bm_mode') === 'count') mode = 'count';
+  countResetPerVideo = sessionStorage.getItem('bm_countreset') === '1';
+} catch(e) {}
 
 // ==========================================
 // 키 설정
@@ -452,25 +512,48 @@ let flashTimer   = null;
 let KEYS = {
   play:' ', back:'j', fwd:'l', slower:'[', faster:']',
   in:'i', made:'a', missed:'x', undo:'z', prev:'p', next:'n', save:'s',
+  mode:'m', count:'c',
 };
+
+const SHOT_ONLY_ACTIONS  = ['in', 'made', 'missed'];
+const COUNT_ONLY_ACTIONS = ['count'];
+
+// 키 정규화: 한글 IME 상태나 Shift 상태에서도 같은 키로 인식
+function keyOf(e) {
+  const k = e.key;
+  if (k && k.length === 1 && /[A-Za-z]/.test(k)) return k.toLowerCase();
+  const code = e.code || '';
+  if (/^Key[A-Z]$/.test(code) &&
+      (!k || k === 'Process' || k === 'Unidentified' || (k.length === 1 && k.charCodeAt(0) > 127))) {
+    return code.slice(3).toLowerCase();
+  }
+  if (k && k.length === 1) return k.toLowerCase();
+  return k;
+}
+const fmtKey = k => k === ' ' ? 'Space' : String(k).toUpperCase();
+const MODIFIER_KEYS = ['Shift','Control','Alt','Meta','CapsLock','Dead','Tab','Escape'];
 
 const settPanel = document.getElementById('settings-panel');
 let _keyHandler = null;
 
-document.getElementById('btn-settings').addEventListener('click', openSettings);
+document.getElementById('btn-settings').addEventListener('click', e => { e.currentTarget.blur(); openSettings(); });
 document.getElementById('sp-cancel').addEventListener('click', closeSettings);
 document.getElementById('sp-save-settings').addEventListener('click', saveSettings);
 
 function openSettings() {
   document.querySelectorAll('.sp-key-input').forEach(inp => {
-    const v = KEYS[inp.dataset.action];
-    inp.value = v === ' ' ? 'Space' : v.toUpperCase();
+    delete inp.dataset.pending;
+    inp.value = fmtKey(KEYS[inp.dataset.action]);
   });
+  document.getElementById('opt-count-reset').checked = countResetPerVideo;
   settPanel.classList.add('open');
   setupKeyListeners();
 }
 function closeSettings() {
-  document.querySelectorAll('.sp-key-input').forEach(i => i.classList.remove('listening'));
+  document.querySelectorAll('.sp-key-input').forEach(i => {
+    i.classList.remove('listening');
+    delete i.dataset.pending;
+  });
   if (_keyHandler) { document.removeEventListener('keydown', _keyHandler); _keyHandler = null; }
   settPanel.classList.remove('open');
 }
@@ -478,7 +561,10 @@ function setupKeyListeners() {
   if (_keyHandler) document.removeEventListener('keydown', _keyHandler);
   document.querySelectorAll('.sp-key-input').forEach(inp => {
     inp.onclick = () => {
-      document.querySelectorAll('.sp-key-input').forEach(i => i.classList.remove('listening'));
+      document.querySelectorAll('.sp-key-input').forEach(i => {
+        i.classList.remove('listening');
+        if (!i.dataset.pending) i.value = fmtKey(KEYS[i.dataset.action]);
+      });
       inp.classList.add('listening');
       inp.value = '키를 누르세요...';
     };
@@ -487,39 +573,70 @@ function setupKeyListeners() {
     if (!settPanel.classList.contains('open')) return;
     const listening = document.querySelector('.sp-key-input.listening');
     if (!listening) return;
+    if (MODIFIER_KEYS.includes(e.key)) return;
     e.preventDefault(); e.stopPropagation();
-    listening.value = e.key === ' ' ? 'Space' : e.key.toUpperCase();
-    listening.dataset.pending = e.key;
+    const k = keyOf(e);
+    listening.value = fmtKey(k);
+    listening.dataset.pending = k;
     listening.classList.remove('listening');
   };
   document.addEventListener('keydown', _keyHandler);
 }
 function saveSettings() {
   document.querySelectorAll('.sp-key-input').forEach(inp => {
-    const raw = inp.dataset.pending || inp.value;
-    KEYS[inp.dataset.action] = (raw === 'Space' || raw === 'SPACE') ? ' ' : raw.toLowerCase();
+    if (inp.dataset.pending !== undefined) KEYS[inp.dataset.action] = inp.dataset.pending;
     delete inp.dataset.pending;
   });
+  countResetPerVideo = document.getElementById('opt-count-reset').checked;
+  try { sessionStorage.setItem('bm_countreset', countResetPerVideo ? '1' : '0'); } catch(e) {}
   updateCtrlLabels();
   closeSettings();
+  renderMarkers(); updateUI();
   flash('✅ 설정 저장됨', 'var(--accent)');
 }
 function updateCtrlLabels() {
-  const fmt = k => k === ' ' ? 'Space' : k.toUpperCase();
-  document.getElementById('lbl-play').textContent   = fmt(KEYS.play);
-  document.getElementById('lbl-back').textContent   = fmt(KEYS.back);
-  document.getElementById('lbl-fwd').textContent    = fmt(KEYS.fwd);
-  document.getElementById('lbl-slower').textContent = fmt(KEYS.slower);
-  document.getElementById('lbl-faster').textContent = fmt(KEYS.faster);
-  document.getElementById('lbl-in').textContent     = fmt(KEYS.in);
-  document.getElementById('lbl-made').textContent   = fmt(KEYS.made);
-  document.getElementById('lbl-missed').textContent = fmt(KEYS.missed);
-  document.getElementById('lbl-undo').textContent   = fmt(KEYS.undo);
-  document.getElementById('lbl-redo').textContent   = fmt(KEYS.undo);
-  document.getElementById('lbl-prev').textContent   = fmt(KEYS.prev);
-  document.getElementById('lbl-next').textContent   = fmt(KEYS.next);
-  document.getElementById('lbl-save').textContent   = fmt(KEYS.save);
+  const set = (id, k) => { document.getElementById(id).textContent = fmtKey(k); };
+  set('lbl-play',   KEYS.play);
+  set('lbl-back',   KEYS.back);
+  set('lbl-fwd',    KEYS.fwd);
+  set('lbl-slower', KEYS.slower);
+  set('lbl-faster', KEYS.faster);
+  set('lbl-in',     KEYS.in);
+  set('lbl-made',   KEYS.made);
+  set('lbl-missed', KEYS.missed);
+  set('lbl-undo',   KEYS.undo);
+  set('lbl-redo',   KEYS.undo);
+  set('lbl-prev',   KEYS.prev);
+  set('lbl-next',   KEYS.next);
+  set('lbl-save',   KEYS.save);
+  set('lbl-count',  KEYS.count);
+  set('lbl-mode',   KEYS.mode);
 }
+
+// ==========================================
+// 모드 (슛 / 카운트 자막)
+// ==========================================
+function applyModeUI() {
+  document.body.dataset.mode = mode;
+  document.getElementById('btn-mode').textContent = mode === 'count' ? '🔢 카운트 모드' : '🎯 슛 모드';
+}
+function setMode(m, silent) {
+  mode = m;
+  pendingIn = null;
+  try { sessionStorage.setItem('bm_mode', mode); } catch(e) {}
+  applyModeUI();
+  renderMarkers(); updateUI();
+  if (!silent) {
+    flash(mode === 'count'
+      ? `🔢 카운트 모드 — ${fmtKey(KEYS.count)} 누르면 자막 +1`
+      : `🎯 슛 모드 — ${fmtKey(KEYS.made)} 성공 / ${fmtKey(KEYS.missed)} 실패`,
+      mode === 'count' ? 'var(--count)' : 'var(--accent)');
+  }
+}
+function toggleMode() { setMode(mode === 'count' ? 'shot' : 'count'); }
+
+document.getElementById('btn-mode').addEventListener('click', e => { e.currentTarget.blur(); toggleMode(); });
+document.getElementById('btn-mode2').addEventListener('click', toggleMode);
 
 // ==========================================
 // 업로드 화면
@@ -529,6 +646,10 @@ const fileInput= document.getElementById('file-input');
 const dropZone = document.getElementById('drop-zone');
 const uploadScr= document.getElementById('upload-screen');
 const editor   = document.getElementById('editor');
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
 
 function handleFiles(files) {
   fileQueue = Array.from(files).sort((a,b) => a.name.localeCompare(b.name));
@@ -548,7 +669,7 @@ function renderFileQueue() {
     div.innerHTML   = `
       <span class="fq-drag-handle" title="드래그로 순서 변경">⠿</span>
       <span class="fq-num">${i+1}</span>
-      <span class="fq-name">${f.name}</span>
+      <span class="fq-name">${esc(f.name)}</span>
       <span class="fq-status">대기중</span>
     `;
     // 드래그 이벤트
@@ -581,16 +702,25 @@ dropZone.addEventListener('drop', e => {
   e.preventDefault(); dropZone.classList.remove('drag');
   handleFiles(e.dataTransfer.files);
 });
+
+function newVideoEntry(name) {
+  return {
+    fileName: name, madeEvents:[], missedEvents:[], allMarkers:[], countMarks:[],
+    fps:60, fpsOk:false, fpsDefault:false, duration:0,
+  };
+}
+
 document.getElementById('btn-start').addEventListener('click', () => {
   if (!fileQueue.length) return;
-  // videoData 초기화
-  videoData = fileQueue.map(f => ({
-    fileName: f.name, madeEvents:[], missedEvents:[], allMarkers:[], fps:60
-  }));
+  // videoData 초기화 + 이전 세션 복구 (모든 영상 한꺼번에)
+  videoData = fileQueue.map(f => newVideoEntry(f.name));
+  const restored = restoreAllSessions();
   currentIdx = 0;
   uploadScr.style.display = 'none';
   editor.style.display    = 'flex';
+  applyModeUI();
   loadVideoAt(0);
+  if (restored) flash(`↪ 이전 작업 복구 (${restored}개)`, 'var(--in-pt)');
 });
 
 // ==========================================
@@ -599,85 +729,115 @@ document.getElementById('btn-start').addEventListener('click', () => {
 function loadVideoAt(idx) {
   if (idx >= fileQueue.length) {
     // 모든 영상 완료 → 저장 안내
-    flash('🎉 모든 영상 완료! S로 저장하세요', 'var(--accent)');
+    flash(`🎉 모든 영상 완료! ${fmtKey(KEYS.save)}로 저장하세요`, 'var(--accent)');
     return;
   }
+  if (idx < 0) return;
   currentIdx = idx;
   const file = fileQueue[idx];
+  const vd   = videoData[idx];
 
   // 현재 영상 데이터 포인터 연결
-  madeEvents   = videoData[idx].madeEvents;
-  missedEvents = videoData[idx].missedEvents;
-  allMarkers   = videoData[idx].allMarkers;
+  madeEvents   = vd.madeEvents;
+  missedEvents = vd.missedEvents;
+  allMarkers   = vd.allMarkers;
+  countMarks   = vd.countMarks;
   redoStack    = [];
+  countRedo    = [];
   pendingIn    = null;
   fileName     = file.name;
 
-  video.src = URL.createObjectURL(file);
+  const myLoad = ++loadToken;
+  fpsToken++;                       // 이전 영상의 FPS 측정 중단
+
+  if (curUrl) { try { URL.revokeObjectURL(curUrl); } catch(e) {} }
+  curUrl = URL.createObjectURL(file);
+  video.src = curUrl;
   video.load();
 
+  renderVideoProgress();
+
   video.onloadedmetadata = () => {
-    duration = video.duration;
-    estimatedFps = 60;
-    fpsReady     = false;
-
-    if (fileName.toLowerCase().includes('30')) estimatedFps = 30;
-
-    document.getElementById('tb-fps').textContent = 'FPS 측정중...';
-    document.getElementById('tb-fps').style.color = 'var(--muted)';
-
-    if ('requestVideoFrameCallback' in video) {
-      let lastTime = null, frameCount = 0;
-      const measure = (now) => {
-        if (lastTime !== null) {
-          frameCount++;
-          if (frameCount >= 10) {
-            const measured = 1000 / ((now - lastTime) / frameCount);
-            if      (measured > 55) estimatedFps = 60;
-            else if (measured > 27) estimatedFps = 30;
-            else if (measured > 23) estimatedFps = 24;
-            fpsReady = true;
-            videoData[idx].fps = estimatedFps;
-            document.getElementById('tb-fps').textContent = `${estimatedFps}fps`;
-            document.getElementById('tb-fps').style.color = 'var(--in-pt)';
-            return;
-          }
-        } else { lastTime = now; }
-        video.requestVideoFrameCallback(measure);
-      };
-      video.requestVideoFrameCallback(measure);
-    } else {
-      fpsReady = true;
-      videoData[idx].fps = estimatedFps;
-      document.getElementById('tb-fps').textContent = `${estimatedFps}fps`;
-    }
+    if (myLoad !== loadToken) return;
+    duration    = video.duration;
+    vd.duration = duration;
 
     document.getElementById('tb-filename').textContent = fileName;
     video.playbackRate = SPEEDS[speedIdx];
 
-    // 세션 복구: 저장된 파일명 목록이 현재와 같으면 복구
-    const savedNames = JSON.parse(sessionStorage.getItem('bm_filenames') || '[]');
-    const sameFiles  = fileQueue.every((f,i) => savedNames[i] === f.name);
-    if (sameFiles) {
-      loadSession(idx);
-      madeEvents   = videoData[idx].madeEvents;
-      missedEvents = videoData[idx].missedEvents;
-      allMarkers   = videoData[idx].allMarkers;
-      const total  = madeEvents.length + missedEvents.length;
-      if (total) flash(`↪ 이전 작업 복구 (${total}개)`, 'var(--in-pt)');
-    }
+    startFpsMeasure(idx);
 
     renderVideoProgress();
     renderMarkers();
     updateUI();
-    video.play();
+    const p = video.play();
+    if (p && p.catch) p.catch(() => {});
 
     // 파일 큐 상태 업데이트
     document.querySelectorAll('.fq-item').forEach((el, i) => {
       el.className = 'fq-item' + (i === idx ? ' active' : i < idx ? ' done' : '');
       el.querySelector('.fq-status').textContent = i === idx ? '▶ 진행중' : i < idx ? '✅ 완료' : '대기중';
     });
+    saveSession();
   };
+}
+
+// ==========================================
+// FPS 측정 (프레임 시간 기준 — 재생 배속과 무관)
+// ==========================================
+function median(arr) {
+  const a = arr.slice().sort((x,y)=>x-y);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m-1] + a[m]) / 2;
+}
+function snapFps(f) {
+  let best = null;
+  STD_FPS.forEach(s => {
+    if (Math.abs(f - s) / s < 0.05 && (best === null || Math.abs(f - s) < Math.abs(f - best))) best = s;
+  });
+  return best !== null ? best : Math.round(f);
+}
+function showFps(vd) {
+  const el = document.getElementById('tb-fps');
+  if (!vd.fpsOk) { el.textContent = 'FPS 측정중...'; el.style.color = 'var(--muted)'; return; }
+  el.textContent = `${vd.fps}fps${vd.fpsDefault ? ' (기본값)' : ''}`;
+  el.style.color = vd.fpsDefault ? 'var(--accent)' : 'var(--in-pt)';
+}
+function startFpsMeasure(idx) {
+  const myToken = ++fpsToken;
+  const vd = videoData[idx];
+  const guess = () => fileName.toLowerCase().includes('30') ? 30 : 60;
+  const finish = (fps, isDefault) => {
+    if (myToken !== fpsToken) return;
+    vd.fps = fps; vd.fpsOk = true; vd.fpsDefault = isDefault;
+    showFps(vd);
+    saveSession();
+  };
+  showFps(vd);
+
+  if (!('requestVideoFrameCallback' in video)) { finish(guess(), true); return; }
+
+  const samples = [];
+  let last = null, calls = 0, defaulted = false;
+  const cb = (now, md) => {
+    if (myToken !== fpsToken) return;
+    calls++;
+    if (md && typeof md.presentedFrames === 'number') {
+      // 배속 1x 이하에서 연속 프레임 간격만 사용
+      if (last && md.presentedFrames - last.pf === 1 && video.playbackRate <= 1) {
+        const dt = md.mediaTime - last.mt;
+        if (dt > 0) {
+          const f = 1 / dt;
+          if (f >= 20 && f <= 130) samples.push(f);
+        }
+      }
+      last = { mt: md.mediaTime, pf: md.presentedFrames };
+    }
+    if (samples.length >= 12) { finish(snapFps(median(samples)), false); return; }
+    if (calls >= 400 && !defaulted) { defaulted = true; finish(guess(), true); }   // 못 구하면 기본값, 이후에도 계속 측정
+    video.requestVideoFrameCallback(cb);
+  };
+  video.requestVideoFrameCallback(cb);
 }
 
 // ==========================================
@@ -685,17 +845,19 @@ function loadVideoAt(idx) {
 // ==========================================
 function goPrevVideo() {
   if (currentIdx <= 0) { flash('첫 번째 영상이에요', '#888'); return; }
-  loadVideoAt(currentIdx - 1);
-  flash(`◀ ${currentIdx}번째 영상`, 'var(--in-pt)');
+  const target = currentIdx - 1;
+  loadVideoAt(target);
+  flash(`◀ ${target + 1}번째 영상`, 'var(--in-pt)');
 }
 
 function goNextVideo() {
   if (currentIdx >= fileQueue.length - 1) {
-    flash('마지막 영상이에요! S로 저장하세요', 'var(--accent)');
+    flash(`마지막 영상이에요! ${fmtKey(KEYS.save)}로 저장하세요`, 'var(--accent)');
     return;
   }
-  loadVideoAt(currentIdx + 1);
-  flash(`▶ ${currentIdx + 2}번째 영상`, 'var(--in-pt)');
+  const target = currentIdx + 1;
+  loadVideoAt(target);
+  flash(`▶ ${target + 1}번째 영상`, 'var(--in-pt)');
 }
 
 // ==========================================
@@ -747,23 +909,74 @@ function updateTimeline() {
   if (pendingIn !== null) tlInCur.style.left = pct(pendingIn) + '%';
 }
 
+// ── 번호 계산 ──
+// 앞 영상들의 성공 슛 수 (SRT/자막 번호의 시작점)
+function madeBase(idx) {
+  let n = 0;
+  for (let i = 0; i < idx; i++) n += videoData[i].madeEvents.length;
+  return n;
+}
+// 카운트 자막 시작 번호 (누적 / 영상마다 리셋)
+function countBase(idx) {
+  if (countResetPerVideo) return 0;
+  let n = 0;
+  for (let i = 0; i < idx; i++) n += videoData[i].countMarks.length;
+  return n;
+}
+function sortedMarks(arr) { return arr.slice().sort((a,b) => a.t - b.t); }
+function countNumberOf(idx, mark) {
+  let r = 1;
+  videoData[idx].countMarks.forEach(m => { if (m !== mark && m.t < mark.t) r++; });
+  return countBase(idx) + r;
+}
+// 현재 시각에 보여야 할 카운트 번호 (없으면 0)
+function countAtTime(idx, t) {
+  const n = videoData[idx].countMarks.filter(m => m.t <= t + 1e-6).length;
+  return n ? countBase(idx) + n : 0;
+}
+
+// 슛 마커 → madeEvents / missedEvents 재구성
+function syncShots() {
+  madeEvents   = allMarkers.filter(m=>m.type==='made')  .map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
+  missedEvents = allMarkers.filter(m=>m.type==='missed').map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
+  const vd = videoData[currentIdx];
+  vd.madeEvents   = madeEvents;
+  vd.missedEvents = missedEvents;
+  vd.allMarkers   = allMarkers;
+}
+
 function renderMarkers() {
-  document.querySelectorAll('.tl-marker').forEach(el => el.remove());
+  document.querySelectorAll('.tl-marker, .tl-count-tick').forEach(el => el.remove());
   allMarkers.forEach((m, i) => {
     const el = document.createElement('div');
-    el.className = 'tl-marker' + (i === allMarkers.length-1 ? ' latest' : '');
+    el.className = 'tl-marker only-shot' + (i === allMarkers.length-1 ? ' latest' : '');
     el.style.left       = pct(m.in) + '%';
     el.style.width      = Math.max(pct(m.out - m.in), 0.3) + '%';
     el.style.background = m.type === 'made' ? 'var(--made)' : 'var(--missed)';
     timeline.appendChild(el);
   });
+  countMarks.forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'tl-count-tick only-count';
+    el.style.left = pct(m.t) + '%';
+    timeline.appendChild(el);
+  });
 
+  document.getElementById('marker-side-title').textContent = mode === 'count' ? '카운트 목록' : '마커 목록';
   const list = document.getElementById('marker-list');
   list.innerHTML = '';
+  if (mode === 'count') renderCountList(list); else renderShotList(list);
+  const latest = list.querySelector('.latest');
+  if (latest && latest.scrollIntoView) latest.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function renderShotList(list) {
   if (!allMarkers.length) {
-    list.innerHTML = '<div class="mk-empty">아직 마커 없음<br>A=성공 X=실패</div>';
+    list.innerHTML = `<div class="mk-empty">아직 마커 없음<br>${fmtKey(KEYS.made)}=성공 ${fmtKey(KEYS.missed)}=실패</div>`;
     return;
   }
+  const base = madeBase(currentIdx);
+  let madeNo = base;
   allMarkers.forEach((m, i) => {
     const el = document.createElement('div');
     el.className = 'mk-item ' + m.type + (i === allMarkers.length-1 ? ' latest' : '');
@@ -771,8 +984,10 @@ function renderMarkers() {
     const nextMade = i < allMarkers.length-1 && allMarkers[i+1].type === 'made';
     const chained  = m.type === 'made' && (prevMade || nextMade);
     const icon     = chained ? '🔗' : m.type === 'made' ? '🟢' : '🔴';
+    let tag = '';
+    if (m.type === 'made') { madeNo++; tag = ` <span class="mk-no">#${madeNo}</span>`; }
     el.innerHTML = `
-      <div class="mk-label">${icon} ${i+1}<br>${fmtSec(m.in)}→${fmtSec(m.out)}</div>
+      <div class="mk-label">${icon} ${i+1}${tag}<br>${fmtSec(m.in)}→${fmtSec(m.out)}</div>
       <button class="mk-del" data-i="${i}">✕</button>
     `;
     el.addEventListener('click', e => {
@@ -785,17 +1000,40 @@ function renderMarkers() {
     btn.addEventListener('click', () => {
       const i = +btn.dataset.i;
       allMarkers.splice(i, 1);
-      madeEvents   = allMarkers.filter(m=>m.type==='made')  .map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
-      missedEvents = allMarkers.filter(m=>m.type==='missed').map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
-      videoData[currentIdx].madeEvents   = madeEvents;
-      videoData[currentIdx].missedEvents = missedEvents;
-      videoData[currentIdx].allMarkers   = allMarkers;
+      syncShots();
       renderMarkers(); updateUI(); saveSession();
       flash('↩ 삭제됨', '#aaa');
     });
   });
-  const latest = list.querySelector('.latest');
-  if (latest) latest.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function renderCountList(list) {
+  if (!countMarks.length) {
+    list.innerHTML = `<div class="mk-empty">아직 카운트 없음<br>${fmtKey(KEYS.count)}=+1 자막</div>`;
+    return;
+  }
+  const sorted = sortedMarks(countMarks);
+  const lastAdded = countMarks[countMarks.length-1];
+  sorted.forEach((m, i) => {
+    const el = document.createElement('div');
+    el.className = 'mk-item count' + (m === lastAdded ? ' latest' : '');
+    el.innerHTML = `
+      <div class="mk-label">🔢 ${countBase(currentIdx) + i + 1}<br>${fmtSec(m.t)}</div>
+      <button class="mk-del" data-i="${i}">✕</button>
+    `;
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('mk-del')) return;
+      video.currentTime = m.t; video.pause();
+    });
+    el.querySelector('.mk-del').addEventListener('click', () => {
+      const k = countMarks.indexOf(m);
+      if (k >= 0) countMarks.splice(k, 1);
+      videoData[currentIdx].countMarks = countMarks;
+      renderMarkers(); updateUI(); saveSession();
+      flash('↩ 삭제됨', '#aaa');
+    });
+    list.appendChild(el);
+  });
 }
 
 // 진행바 드래그
@@ -828,9 +1066,18 @@ function updateUI() {
   // 전체 마커 수 집계
   const totalMade   = videoData.reduce((s,v)=>s+v.madeEvents.length, 0);
   const totalMissed = videoData.reduce((s,v)=>s+v.missedEvents.length, 0);
+  const totalCount  = videoData.reduce((s,v)=>s+v.countMarks.length, 0);
   document.getElementById('cnt-made').textContent   = `🟢 성공: ${totalMade}`;
   document.getElementById('cnt-missed').textContent = `🔴 실패: ${totalMissed}`;
-  document.getElementById('in-overlay').style.display = pendingIn !== null ? 'block' : 'none';
+  document.getElementById('cnt-count').textContent  = `🔢 카운트: ${totalCount}`;
+  document.getElementById('in-overlay').style.display = (mode === 'shot' && pendingIn !== null) ? 'block' : 'none';
+
+  // 카운트 자막 미리보기
+  const co = document.getElementById('count-overlay');
+  const cn = videoData.length ? countAtTime(currentIdx, video.currentTime) : 0;
+  co.textContent   = cn ? String(cn) : '';
+  co.style.display = cn ? 'block' : 'none';
+
   updateTimeline();
 }
 
@@ -848,7 +1095,7 @@ function flash(msg, color) {
 }
 
 // ==========================================
-// 세션 저장/복구
+// 세션 저장/복구 (모든 영상)
 // ==========================================
 function saveSession() {
   try {
@@ -858,15 +1105,29 @@ function saveSession() {
   } catch(e) {}
 }
 
-function loadSession(idx) {
+// 시작할 때 한 번에 모든 영상의 마커를 복구 (파일 이름이 같은 영상끼리 매칭)
+function restoreAllSessions() {
+  let restored = 0;
   try {
     const saved = JSON.parse(sessionStorage.getItem('bm_videodata') || '[]');
-    if (saved[idx]) {
-      videoData[idx].madeEvents   = saved[idx].madeEvents   || [];
-      videoData[idx].missedEvents = saved[idx].missedEvents || [];
-      videoData[idx].allMarkers   = saved[idx].allMarkers   || [];
-    }
+    if (!Array.isArray(saved)) return 0;
+    videoData.forEach(vd => {
+      const s = saved.find(x => x && x.fileName === vd.fileName);
+      if (!s) return;
+      const fix = a => (Array.isArray(a) ? a : [])
+        .filter(e => e && isFinite(e.in) && isFinite(e.out))
+        .map(e => ({ ...e, fileName: e.fileName || vd.fileName }));
+      vd.madeEvents   = fix(s.madeEvents);
+      vd.missedEvents = fix(s.missedEvents);
+      vd.allMarkers   = fix(s.allMarkers);
+      vd.countMarks   = (Array.isArray(s.countMarks) ? s.countMarks : [])
+        .filter(m => m && isFinite(m.t)).map(m => ({ t: +m.t }));
+      if (s.fpsOk && s.fps && !s.fpsDefault) { vd.fps = s.fps; vd.fpsOk = true; vd.fpsDefault = false; }
+      if (s.duration) vd.duration = s.duration;
+      restored += vd.madeEvents.length + vd.missedEvents.length + vd.countMarks.length;
+    });
   } catch(e) {}
+  return restored;
 }
 
 // ==========================================
@@ -874,17 +1135,18 @@ function loadSession(idx) {
 // ==========================================
 function addMarker(type) {
   const out = video.currentTime;
+  const pre = type === 'made' ? PRE_SECONDS : PRE_SECONDS_MISSED;
   let in_;
   const lastMarker = allMarkers.length > 0 ? allMarkers[allMarkers.length-1] : null;
 
   // 연속 성공: 직전 마커가 같은 파일의 성공 마커일 때만
   if (type === 'made' && lastMarker && lastMarker.type === 'made'
-      && lastMarker.fileName === fileName && pendingIn === null) {
+      && lastMarker.fileName === fileName && pendingIn === null && lastMarker.out < out) {
     in_ = lastMarker.out;
     flash(`🟢🟢 연속 성공!  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
   } else {
-    const pre = type === 'made' ? PRE_SECONDS : PRE_SECONDS_MISSED;
     in_ = pendingIn !== null ? pendingIn : Math.max(0, out - pre);
+    if (!(in_ < out)) in_ = Math.max(0, out - pre);   // IN점이 OUT보다 뒤면 무시
     flash(type==='made'
       ? `🟢 성공  ${fmtSec(in_)} ~ ${fmtSec(out)}`
       : `🔴 실패  ${fmtSec(in_)} ~ ${fmtSec(out)}`,
@@ -892,66 +1154,106 @@ function addMarker(type) {
   }
   pendingIn = null;
 
-  const ev = { in:in_, out, fileName };
-  if (type==='made')   madeEvents.push(ev);
-  else                 missedEvents.push(ev);
   allMarkers.push({ type, in:in_, out, fileName });
   redoStack = [];
-
-  // videoData 동기화
-  videoData[currentIdx].madeEvents   = madeEvents;
-  videoData[currentIdx].missedEvents = missedEvents;
-  videoData[currentIdx].allMarkers   = allMarkers;
+  syncShots();
 
   renderMarkers(); updateUI(); saveSession();
 }
 
 // ==========================================
+// 카운트 자막 추가
+// ==========================================
+function addCount() {
+  const t = video.currentTime;
+  if (countMarks.some(m => Math.abs(m.t - t) < 0.05)) {
+    flash('이미 이 위치에 카운트가 있어요', '#888');
+    return;
+  }
+  const mark = { t };
+  countMarks.push(mark);
+  countRedo = [];
+  videoData[currentIdx].countMarks = countMarks;
+  flash(`🔢 ${countNumberOf(currentIdx, mark)}`, 'var(--count)');
+  renderMarkers(); updateUI(); saveSession();
+}
+
+// ==========================================
+// 취소 / 복구
+// ==========================================
+function doUndo() {
+  if (mode === 'count') {
+    if (!countMarks.length) { flash('취소할 카운트 없음','#888'); return; }
+    countRedo.push(countMarks.pop());
+    videoData[currentIdx].countMarks = countMarks;
+  } else {
+    if (!allMarkers.length) { flash('취소할 마커 없음','#888'); return; }
+    redoStack.push(allMarkers.pop());
+    pendingIn = null;
+    syncShots();
+  }
+  renderMarkers(); updateUI(); saveSession();
+  flash('↩ 취소됨','#aaa');
+}
+function doRedo() {
+  if (mode === 'count') {
+    if (!countRedo.length) { flash('복구할 항목 없음','#888'); return; }
+    countMarks.push(countRedo.pop());
+    videoData[currentIdx].countMarks = countMarks;
+  } else {
+    if (!redoStack.length) { flash('복구할 항목 없음','#888'); return; }
+    allMarkers.push(redoStack.pop());
+    syncShots();
+  }
+  renderMarkers(); updateUI(); saveSession();
+  flash('↪ 복구됨','var(--in-pt)');
+}
+
+// ==========================================
 // 키보드
 // ==========================================
+function actionFor(k) {
+  const acts = Object.keys(KEYS).filter(a => KEYS[a] === k);
+  if (!acts.length) return null;
+  const blocked = mode === 'count' ? SHOT_ONLY_ACTIONS : COUNT_ONLY_ACTIONS;
+  return acts.find(a => !blocked.includes(a)) || acts[0];
+}
+
 document.addEventListener('keydown', e => {
   if (uploadScr.style.display !== 'none') return;
   if (settPanel.classList.contains('open')) return;
   if (['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
 
-  const k = e.key;
-  if      (k===KEYS.play)                { e.preventDefault(); video.paused?video.play():video.pause(); }
-  else if (k===KEYS.back)                { e.preventDefault(); video.currentTime=Math.max(0,video.currentTime-SEEK_SEC); flash(`◀ -${SEEK_SEC}s`,'var(--muted)'); }
-  else if (k===KEYS.fwd)                 { e.preventDefault(); video.currentTime=Math.min(duration,video.currentTime+SEEK_SEC); flash(`▶ +${SEEK_SEC}s`,'var(--muted)'); }
-  else if (k===KEYS.faster)              { e.preventDefault(); speedIdx=Math.min(SPEEDS.length-1,speedIdx+1); video.playbackRate=SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); }
-  else if (k===KEYS.slower)              { e.preventDefault(); speedIdx=Math.max(0,speedIdx-1); video.playbackRate=SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); }
-  else if (k===KEYS.in)                  { e.preventDefault(); pendingIn=video.currentTime; flash(`📍 IN  ${fmtSec(pendingIn)}`,'var(--in-pt)'); updateUI(); }
-  else if (k===KEYS.made)                { e.preventDefault(); addMarker('made'); }
-  else if (k===KEYS.missed)              { e.preventDefault(); addMarker('missed'); }
-  else if (k===KEYS.prev)                { e.preventDefault(); goPrevVideo(); }
-  else if (k===KEYS.next)                { e.preventDefault(); goNextVideo(); }
-  else if (k===KEYS.save)                { e.preventDefault(); saveEDL(); }
-  else if (k===KEYS.undo && !e.shiftKey) {
-    e.preventDefault();
-    if (!allMarkers.length) { flash('취소할 마커 없음','#888'); return; }
-    const last = allMarkers.pop();
-    redoStack.push(last);
-    if (last.type==='made'   && madeEvents.length)   madeEvents.pop();
-    if (last.type==='missed' && missedEvents.length) missedEvents.pop();
-    pendingIn = null;
-    videoData[currentIdx].madeEvents   = madeEvents;
-    videoData[currentIdx].missedEvents = missedEvents;
-    videoData[currentIdx].allMarkers   = allMarkers;
-    renderMarkers(); updateUI(); saveSession();
-    flash('↩ 취소됨','#aaa');
+  const act = actionFor(keyOf(e));
+  if (!act) return;
+  e.preventDefault();
+
+  // 꾹 누를 때 반복 입력 방지 (마킹/저장/이동류)
+  if (e.repeat && ['in','made','missed','count','mode','save','prev','next'].includes(act)) return;
+
+  // 현재 모드에서 쓸 수 없는 키
+  if (mode === 'count' && SHOT_ONLY_ACTIONS.includes(act)) {
+    flash(`🔢 카운트 모드예요 — ${fmtKey(KEYS.mode)}로 슛 모드 전환`, 'var(--count)'); return;
   }
-  else if (k===KEYS.undo && e.shiftKey) {
-    e.preventDefault();
-    if (!redoStack.length) { flash('복구할 항목 없음','#888'); return; }
-    const redo = redoStack.pop();
-    allMarkers.push(redo);
-    if (redo.type==='made')   madeEvents.push({in:redo.in,out:redo.out,fileName:redo.fileName});
-    if (redo.type==='missed') missedEvents.push({in:redo.in,out:redo.out,fileName:redo.fileName});
-    videoData[currentIdx].madeEvents   = madeEvents;
-    videoData[currentIdx].missedEvents = missedEvents;
-    videoData[currentIdx].allMarkers   = allMarkers;
-    renderMarkers(); updateUI(); saveSession();
-    flash('↪ 복구됨','var(--in-pt)');
+  if (mode === 'shot' && COUNT_ONLY_ACTIONS.includes(act)) {
+    flash(`🎯 슛 모드예요 — ${fmtKey(KEYS.mode)}로 카운트 모드 전환`, 'var(--accent)'); return;
+  }
+
+  switch (act) {
+    case 'play':   video.paused ? video.play() : video.pause(); break;
+    case 'back':   video.currentTime = Math.max(0, video.currentTime - SEEK_SEC); flash(`◀ -${SEEK_SEC}s`,'var(--muted)'); break;
+    case 'fwd':    video.currentTime = Math.min(duration, video.currentTime + SEEK_SEC); flash(`▶ +${SEEK_SEC}s`,'var(--muted)'); break;
+    case 'faster': speedIdx = Math.min(SPEEDS.length-1, speedIdx+1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); break;
+    case 'slower': speedIdx = Math.max(0, speedIdx-1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); break;
+    case 'in':     pendingIn = video.currentTime; flash(`📍 IN  ${fmtSec(pendingIn)}`,'var(--in-pt)'); updateUI(); break;
+    case 'made':   addMarker('made'); break;
+    case 'missed': addMarker('missed'); break;
+    case 'count':  addCount(); break;
+    case 'mode':   toggleMode(); break;
+    case 'prev':   goPrevVideo(); break;
+    case 'next':   goNextVideo(); break;
+    case 'save':   saveEDL(); break;
+    case 'undo':   e.shiftKey ? doRedo() : doUndo(); break;
   }
 });
 
@@ -960,7 +1262,7 @@ document.getElementById('btn-next-vid').addEventListener('click', goNextVideo);
 document.getElementById('btn-save').addEventListener('click', saveEDL);
 
 // ==========================================
-// EDL 저장
+// EDL / SRT 저장
 // ==========================================
 function toTC(sec, fps) {
   sec = Math.max(0, sec);
@@ -990,69 +1292,154 @@ function buildEDL(events, title, fps, clipFileName) {
   return lines.join('\n');
 }
 
+// 여러 영상: 영상 순서대로 이어붙인 EDL (영상별 fps 사용)
+function buildMergedEDL(key, title) {
+  let lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
+  let recIn = 0, n = 0;
+  videoData.forEach(vd => {
+    const fps = vd.fps;
+    vd[key].forEach(ev => {
+      n++;
+      const dur = ev.out - ev.in;
+      lines.push(
+        `${String(n).padStart(3,'0')}  AX  V  C  ` +
+        `${toTC(ev.in, fps)} ${toTC(ev.out, fps)} ` +
+        `${toTC(recIn, fps)} ${toTC(recIn+dur, fps)}`
+      );
+      lines.push(`* FROM CLIP NAME: ${ev.fileName || vd.fileName}`);
+      lines.push('');
+      recIn += dur;
+    });
+  });
+  return lines.join('\n');
+}
+
+// ── SRT ──
+function srtTime(sec) {
+  const total = Math.max(0, Math.round(sec * 1000));
+  const ms = total % 1000;
+  const s  = Math.floor(total / 1000) % 60;
+  const m  = Math.floor(total / 60000) % 60;
+  const h  = Math.floor(total / 3600000);
+  const p2 = n => String(n).padStart(2,'0');
+  return `${p2(h)}:${p2(m)}:${p2(s)},${String(ms).padStart(3,'0')}`;
+}
+function cuesToSRT(cues) {
+  return cues.map((c, i) => `${i+1}\n${srtTime(c.s)} --> ${srtTime(c.e)}\n${c.text}\n`).join('\n');
+}
+
+// 성공 슛 하이라이트 타임라인용: EDL과 같은 위치에 1, 2, 3 ... 번호 자막
+function buildMadeSRT() {
+  const cues = [];
+  let n = 0, rec = 0;
+  videoData.forEach(vd => {
+    const fps = vd.fps || 60;
+    vd.madeEvents.forEach(ev => {
+      n++;
+      const dur = ev.out - ev.in;
+      const s = Math.round(rec * fps) / fps;
+      const e = Math.round((rec + dur) * fps) / fps;
+      rec += dur;
+      if (e - s > 0.0005) cues.push({ s, e, text: String(n) });
+    });
+  });
+  return { content: cuesToSRT(cues), count: cues.length };
+}
+
+// 카운트 자막: 영상 원본 시간 기준. 누를 때마다 번호가 바뀌고 다음 카운트(또는 영상 끝)까지 유지
+function buildCountSRT(idx) {
+  const vd    = videoData[idx];
+  const marks = sortedMarks(vd.countMarks);
+  const base  = countBase(idx);
+  const cues  = [];
+  marks.forEach((m, i) => {
+    const s = m.t;
+    let e;
+    if (i < marks.length - 1) e = marks[i+1].t;
+    else e = (vd.duration && vd.duration > m.t) ? vd.duration : m.t + 3;
+    if (e - s < 0.02) return;
+    cues.push({ s, e, text: String(base + i + 1) });
+  });
+  return { content: cuesToSRT(cues), count: cues.length };
+}
+
 function downloadText(content, name) {
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([content],{type:'text/plain'}));
+  const url = URL.createObjectURL(new Blob([content],{type:'text/plain;charset=utf-8'}));
+  a.href = url;
   a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 10000);
+}
+
+function safeName(s) {
+  return String(s).replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g, '_');
 }
 
 function saveEDL() {
   const totalMade   = videoData.reduce((s,v)=>s+v.madeEvents.length, 0);
   const totalMissed = videoData.reduce((s,v)=>s+v.missedEvents.length, 0);
-  if (!totalMade && !totalMissed) { flash('마커가 없습니다!','#f88'); return; }
-  if (!fpsReady) { flash('⏳ FPS 측정 중...','#f88'); return; }
+  const totalCount  = videoData.reduce((s,v)=>s+v.countMarks.length, 0);
+  if (!totalMade && !totalMissed && !totalCount) { flash('마커가 없습니다!','#f88'); return; }
+
+  // 슛 마커가 있는 영상은 FPS가 측정되어 있어야 함
+  const waiting = videoData.find(v => (v.madeEvents.length || v.missedEvents.length) && !v.fpsOk);
+  if (waiting) { flash('⏳ FPS 측정 중... (영상을 재생해 주세요)','#f88'); return; }
+  const usedDefault = videoData.some(v => (v.madeEvents.length || v.missedEvents.length) && v.fpsDefault);
 
   const now = new Date();
   const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
 
-  // 영상별 EDL 저장 여부 선택:
+  const files = [];   // { name, content }
+
   // 영상이 1개면 기존처럼, 여러 개면 합쳐서 하나로
   if (fileQueue.length === 1) {
     const vd  = videoData[0];
     const fps = vd.fps;
-    if (vd.madeEvents.length)   downloadText(buildEDL(vd.madeEvents,   'SHOTS_MADE',   fps, vd.fileName), `${dateStr}_shots_made.edl`);
-    setTimeout(() => {
-      if (vd.missedEvents.length) downloadText(buildEDL(vd.missedEvents, 'SHOTS_MISSED', fps, vd.fileName), `${dateStr}_shots_missed.edl`);
-    }, 300);
+    if (vd.madeEvents.length)   files.push({ name:`${dateStr}_shots_made.edl`,   content:buildEDL(vd.madeEvents,   'SHOTS_MADE',   fps, vd.fileName) });
+    if (vd.missedEvents.length) files.push({ name:`${dateStr}_shots_missed.edl`, content:buildEDL(vd.missedEvents, 'SHOTS_MISSED', fps, vd.fileName) });
   } else {
-    // 여러 영상: 성공/실패 각각 하나로 합쳐서 저장
-    const allMade   = videoData.flatMap(vd => vd.madeEvents);
-    const allMissed = videoData.flatMap(vd => vd.missedEvents);
-    // fps는 첫 영상 기준 (보통 다 같음)
-    const fps = videoData[0].fps;
-
-    // 합쳐진 EDL 빌드 (각 이벤트에 fileName 포함)
-    function buildMergedEDL(events, title) {
-      let lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
-      let recIn = 0;
-      events.forEach((ev, i) => {
-        // 영상별 fps 사용
-        const vd  = videoData.find(v=>v.fileName===ev.fileName) || videoData[0];
-        const fps = vd.fps;
-        const dur = ev.out - ev.in;
-        lines.push(
-          `${String(i+1).padStart(3,'0')}  AX  V  C  ` +
-          `${toTC(ev.in, fps)} ${toTC(ev.out, fps)} ` +
-          `${toTC(recIn, fps)} ${toTC(recIn+dur, fps)}`
-        );
-        lines.push(`* FROM CLIP NAME: ${ev.fileName}`);
-        lines.push('');
-        recIn += dur;
-      });
-      return lines.join('\n');
-    }
-
-    if (allMade.length)   downloadText(buildMergedEDL(allMade,   'SHOTS_MADE'),   `${dateStr}_shots_made.edl`);
-    setTimeout(() => {
-      if (allMissed.length) downloadText(buildMergedEDL(allMissed, 'SHOTS_MISSED'), `${dateStr}_shots_missed.edl`);
-    }, 300);
+    if (totalMade)   files.push({ name:`${dateStr}_shots_made.edl`,   content:buildMergedEDL('madeEvents',   'SHOTS_MADE') });
+    if (totalMissed) files.push({ name:`${dateStr}_shots_missed.edl`, content:buildMergedEDL('missedEvents', 'SHOTS_MISSED') });
   }
 
-  const pct = totalMade+totalMissed ? (totalMade/(totalMade+totalMissed)*100).toFixed(1) : 0;
-  flash(`💾 저장완료  성공률 ${pct}%`, 'var(--accent)');
-  console.log(`💾 EDL 저장 | 성공:${totalMade} 실패:${totalMissed}`);
+  // 성공 슛 번호 자막 (1, 2, 3 ...)
+  if (totalMade) {
+    const srt = buildMadeSRT();
+    files.push({ name:`${dateStr}_shots_made.srt`, content:srt.content });
+  }
+
+  // 카운트 자막 (영상별)
+  videoData.forEach((vd, i) => {
+    if (!vd.countMarks.length) return;
+    const srt = buildCountSRT(i);
+    if (!srt.count) return;
+    const idxStr = fileQueue.length > 1 ? `${String(i+1).padStart(2,'0')}_` : '';
+    files.push({ name:`${dateStr}_${idxStr}${safeName(vd.fileName)}_count.srt`, content:srt.content });
+  });
+
+  if (!files.length) { flash('저장할 내용이 없습니다!','#f88'); return; }
+  files.forEach((f, i) => setTimeout(() => downloadText(f.content, f.name), i * 350));
+
+  let msg;
+  if (totalMade + totalMissed) {
+    const pctV = (totalMade/(totalMade+totalMissed)*100).toFixed(1);
+    msg = `💾 저장완료  성공률 ${pctV}%  (파일 ${files.length}개)`;
+  } else {
+    msg = `💾 카운트 자막 저장완료 (파일 ${files.length}개)`;
+  }
+  if (usedDefault) msg += '  ⚠ FPS 기본값 사용';
+  flash(msg, 'var(--accent)');
+  console.log(`💾 저장 | 성공:${totalMade} 실패:${totalMissed} 카운트:${totalCount} 파일:${files.map(f=>f.name).join(', ')}`);
 }
+
+// ==========================================
+// 초기화
+// ==========================================
+updateCtrlLabels();
+applyModeUI();
 </script>
 </body>
 </html>
