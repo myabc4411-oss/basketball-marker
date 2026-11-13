@@ -272,6 +272,11 @@
     height:calc(var(--bar-h) + 6px); background:var(--count);
     border-radius:2px; transform:translateX(-50%); pointer-events:none;
   }
+  .tl-sub-tick {
+    position:absolute; top:-3px; width:3px;
+    height:calc(var(--bar-h) + 6px);
+    border-radius:2px; transform:translateX(-50%); pointer-events:none;
+  }
   #tl-in-cursor {
     position:absolute; top:-7px; width:3px;
     height:calc(var(--bar-h) + 14px); background:var(--in-pt);
@@ -433,8 +438,8 @@
     <div class="btn"><span id="lbl-slower">[</span><span id="lbl-faster">]</span> 배속</div>
     <div class="sep"></div>
     <div class="btn only-shot"><span id="lbl-in">I</span> IN점</div>
-    <div class="btn made only-shot"><span id="lbl-made">A</span> 성공</div>
-    <div class="btn missed only-shot"><span id="lbl-missed">X</span> 실패</div>
+    <div class="btn made"><span id="lbl-made">A</span> 성공</div>
+    <div class="btn missed"><span id="lbl-missed">X</span> 실패</div>
     <div class="btn count only-count"><span id="lbl-count">C</span> 카운트 자막 +1</div>
     <div class="btn cancel"><span id="lbl-undo">Z</span> 취소</div>
     <div class="btn cancel">Shift+<span id="lbl-redo">Z</span> 복구</div>
@@ -469,6 +474,13 @@
     <div class="sp-row"><div class="sp-label">모드 전환 (슛 ↔ 카운트)</div><input class="sp-key-input" data-action="mode"  readonly value="m"></div>
     <div class="sp-row"><div class="sp-label">카운트 +1 (자막)</div>        <input class="sp-key-input" data-action="count" readonly value="c"></div>
     <div class="sp-row"><div class="sp-label">영상마다 1부터 다시 시작</div><input type="checkbox" class="sp-check" id="opt-count-reset"></div>
+    <div class="sp-sec-title">EDL 타임라인 FPS</div>
+    <div class="sp-row"><div class="sp-label">DaVinci 타임라인 FPS와 같게</div>
+      <select class="sp-num" id="opt-tlfps">
+        <option value="0">자동 (영상 FPS)</option>
+        <option value="24">24</option><option value="25">25</option><option value="30">30</option>
+        <option value="50">50</option><option value="60">60</option>
+      </select></div>
     <div class="sp-sec-title">클립 뒤 여유 (EDL 저장 시 적용)</div>
     <div class="sp-row"><div class="sp-label">성공 클립 뒤 여유 (초)</div><input type="number" class="sp-num" id="opt-post-made" min="0" max="10" step="0.1"></div>
     <div class="sp-row"><div class="sp-label">실패 클립 뒤 여유 (초)</div><input type="number" class="sp-num" id="opt-post-missed" min="0" max="10" step="0.1"></div>
@@ -512,7 +524,8 @@ let missedEvents = [];
 let allMarkers   = [];
 let countMarks   = [];   // 카운트 자막 마커 [{t}]
 let redoStack    = [];
-let countRedo    = [];
+let countRedo    = [];   // 카운트 모드 복구용: [{kind:'sub'|'count', obj}]
+let seqCounter   = 0;    // 카운트 모드 입력 순서 (취소할 때 가장 최근 것을 찾기 위함)
 
 let speedIdx     = 2;
 let pendingIn    = null;
@@ -542,6 +555,10 @@ function numOr(v, d) { const n = parseFloat(v); return isFinite(n) ? n : d; }
 let postMade   = Math.min(10, Math.max(0, numOr(lsGet('bm_postmade'),   1.0)));
 let postMissed = Math.min(10, Math.max(0, numOr(lsGet('bm_postmissed'), 0)));
 
+// EDL 타임라인 FPS: 0이면 영상 FPS를 그대로 사용(자동). DaVinci 타임라인 FPS와 같게 맞추면 프레임 표기가 어긋나지 않음
+let tlFps = [0, 24, 25, 30, 50, 60].includes(parseInt(lsGet('bm_tlfps'), 10)) ? parseInt(lsGet('bm_tlfps'), 10) : 0;
+const edlFps = vd => tlFps || vd.fps;
+
 try {
   if (sessionStorage.getItem('bm_mode') === 'count') mode = 'count';
   countResetPerVideo = sessionStorage.getItem('bm_countreset') === '1';
@@ -556,7 +573,7 @@ let KEYS = {
   mode:'m', count:'c',
 };
 
-const SHOT_ONLY_ACTIONS  = ['in', 'made', 'missed'];
+const SHOT_ONLY_ACTIONS  = ['in'];   // 카운트 모드에서도 A/X(성공/실패)는 자막 기록용으로 사용 가능
 const COUNT_ONLY_ACTIONS = ['count'];
 
 // 키 정규화: 한글 IME 상태나 Shift 상태에서도 같은 키로 인식
@@ -587,6 +604,7 @@ function openSettings() {
     inp.value = fmtKey(KEYS[inp.dataset.action]);
   });
   document.getElementById('opt-count-reset').checked = countResetPerVideo;
+  document.getElementById('opt-tlfps').value       = String(tlFps);
   document.getElementById('opt-post-made').value   = postMade;
   document.getElementById('opt-post-missed').value = postMissed;
   document.getElementById('opt-score-on').checked = scoreOn;
@@ -651,6 +669,8 @@ function saveSettings() {
   scoreStart = Math.max(0, parseInt(document.getElementById('opt-start').value, 10) || 0);
   postMade   = Math.min(10, Math.max(0, numOr(document.getElementById('opt-post-made').value,   postMade)));
   postMissed = Math.min(10, Math.max(0, numOr(document.getElementById('opt-post-missed').value, postMissed)));
+  tlFps = parseInt(document.getElementById('opt-tlfps').value, 10) || 0;
+  lsSet('bm_tlfps', tlFps);
   lsSet('bm_postmade',   postMade);
   lsSet('bm_postmissed', postMissed);
   lsSet('bm_scoreon', scoreOn ? '1' : '0');
@@ -695,7 +715,7 @@ function setMode(m, silent) {
   renderMarkers(); updateUI();
   if (!silent) {
     flash(mode === 'count'
-      ? `🔢 카운트 모드 — ${fmtKey(KEYS.count)} 누르면 자막 +1`
+      ? `🔢 카운트 모드 — ${fmtKey(KEYS.made)}/${fmtKey(KEYS.missed)}로 자막만 기록 (컷 없음)`
       : `🎯 슛 모드 — ${fmtKey(KEYS.made)} 성공 / ${fmtKey(KEYS.missed)} 실패`,
       mode === 'count' ? 'var(--count)' : 'var(--accent)');
   }
@@ -1006,7 +1026,9 @@ function countAtTime(idx, t) {
 // 앞 영상들의 성공·실패 수
 function prevTotals(idx) {
   let m = 0, x = 0;
-  for (let i = 0; i < idx; i++) { m += videoData[i].madeEvents.length; x += videoData[i].missedEvents.length; }
+  for (let i = 0; i < idx; i++) {
+    videoData[i].allMarkers.forEach(mk => { if (mk.type === 'made') m++; else x++; });   // 슛 모드 + 카운트 모드 기록 모두 포함
+  }
   return { m, x };
 }
 function scoreLines(made, missed) {
@@ -1016,19 +1038,23 @@ function scoreLines(made, missed) {
   return `남은 ${f(remain)}\n누적 ${f(total)}\n성공 ${f(made)}\n실패 ${f(missed)}`;
 }
 // 현재 시각까지 누른 A/X 기준 점수판
-function scoreAtTime(idx, t) {
+function scoreCounts(idx, t) {
   const b = prevTotals(idx);
   let m = b.m, x = b.x;
   videoData[idx].allMarkers.forEach(mk => {
     if (mk.out <= t + 1e-6) { if (mk.type === 'made') m++; else x++; }
   });
-  return scoreLines(m, x);
+  return { m, x };
+}
+function scoreAtTime(idx, t) {
+  const c = scoreCounts(idx, t);
+  return scoreLines(c.m, c.x);
 }
 
-// 슛 마커 → madeEvents / missedEvents 재구성
+// 슛 마커 → madeEvents / missedEvents 재구성 (카운트 모드 자막 전용 마커(sub)는 컷/EDL에서 제외)
 function syncShots() {
-  madeEvents   = allMarkers.filter(m=>m.type==='made')  .map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
-  missedEvents = allMarkers.filter(m=>m.type==='missed').map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
+  madeEvents   = allMarkers.filter(m=>m.type==='made'   && !m.sub).map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
+  missedEvents = allMarkers.filter(m=>m.type==='missed' && !m.sub).map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
   const vd = videoData[currentIdx];
   vd.madeEvents   = madeEvents;
   vd.missedEvents = missedEvents;
@@ -1036,12 +1062,20 @@ function syncShots() {
 }
 
 function renderMarkers() {
-  document.querySelectorAll('.tl-marker, .tl-count-tick').forEach(el => el.remove());
-  allMarkers.forEach((m, i) => {
+  document.querySelectorAll('.tl-marker, .tl-count-tick, .tl-sub-tick').forEach(el => el.remove());
+  const shots = allMarkers.filter(m => !m.sub);
+  shots.forEach((m, i) => {
     const el = document.createElement('div');
-    el.className = 'tl-marker only-shot' + (i === allMarkers.length-1 ? ' latest' : '');
+    el.className = 'tl-marker only-shot' + (i === shots.length-1 ? ' latest' : '');
     el.style.left       = pct(m.in) + '%';
     el.style.width      = Math.max(pct(m.out - m.in), 0.3) + '%';
+    el.style.background = m.type === 'made' ? 'var(--made)' : 'var(--missed)';
+    timeline.appendChild(el);
+  });
+  allMarkers.filter(m => m.sub).forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'tl-sub-tick only-count';
+    el.style.left       = pct(m.out) + '%';
     el.style.background = m.type === 'made' ? 'var(--made)' : 'var(--missed)';
     timeline.appendChild(el);
   });
@@ -1052,7 +1086,7 @@ function renderMarkers() {
     timeline.appendChild(el);
   });
 
-  document.getElementById('marker-side-title').textContent = mode === 'count' ? '카운트 목록' : '마커 목록';
+  document.getElementById('marker-side-title').textContent = mode === 'count' ? '자막 목록' : '마커 목록';
   const list = document.getElementById('marker-list');
   list.innerHTML = '';
   if (mode === 'count') renderCountList(list); else renderShotList(list);
@@ -1061,47 +1095,71 @@ function renderMarkers() {
 }
 
 function renderShotList(list) {
-  if (!allMarkers.length) {
+  // 카운트 모드에서 기록한 자막 전용 마커(sub)는 슛 목록에 넣지 않음
+  const shots = allMarkers.filter(m => !m.sub);
+  if (!shots.length) {
     list.innerHTML = `<div class="mk-empty">아직 마커 없음<br>${fmtKey(KEYS.made)}=성공 ${fmtKey(KEYS.missed)}=실패</div>`;
     return;
   }
   const base = madeBase(currentIdx);
   let madeNo = base;
-  allMarkers.forEach((m, i) => {
+  shots.forEach((m, i) => {
     const el = document.createElement('div');
-    el.className = 'mk-item ' + m.type + (i === allMarkers.length-1 ? ' latest' : '');
-    const prevMade = i > 0 && allMarkers[i-1].type === 'made';
-    const nextMade = i < allMarkers.length-1 && allMarkers[i+1].type === 'made';
+    el.className = 'mk-item ' + m.type + (i === shots.length-1 ? ' latest' : '');
+    const prevMade = i > 0 && shots[i-1].type === 'made';
+    const nextMade = i < shots.length-1 && shots[i+1].type === 'made';
     const chained  = m.type === 'made' && (prevMade || nextMade);
     const icon     = chained ? '🔗' : m.type === 'made' ? '🟢' : '🔴';
     let tag = '';
     if (m.type === 'made') { madeNo++; tag = ` <span class="mk-no">#${madeNo}</span>`; }
     el.innerHTML = `
       <div class="mk-label">${icon} ${i+1}${tag}<br>${fmtSec(m.in)}→${fmtSec(m.out)}</div>
-      <button class="mk-del" data-i="${i}">✕</button>
+      <button class="mk-del">✕</button>
     `;
     el.addEventListener('click', e => {
       if (e.target.classList.contains('mk-del')) return;
       video.currentTime = m.in; video.pause();
     });
-    list.appendChild(el);
-  });
-  list.querySelectorAll('.mk-del').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const i = +btn.dataset.i;
-      allMarkers.splice(i, 1);
+    el.querySelector('.mk-del').addEventListener('click', () => {
+      const k = allMarkers.indexOf(m);
+      if (k >= 0) allMarkers.splice(k, 1);
       syncShots();
       renderMarkers(); updateUI(); saveSession();
       flash('↩ 삭제됨', '#aaa');
     });
+    list.appendChild(el);
   });
 }
 
+// 카운트 모드 목록: A/X 자막 기록 + C 카운트
 function renderCountList(list) {
-  if (!countMarks.length) {
-    list.innerHTML = `<div class="mk-empty">아직 카운트 없음<br>${fmtKey(KEYS.count)}=+1 자막</div>`;
+  const subs = allMarkers.filter(m => m.sub).sort((a, b) => a.out - b.out);
+  if (!subs.length && !countMarks.length) {
+    list.innerHTML = `<div class="mk-empty">아직 자막 없음<br>${fmtKey(KEYS.made)}=성공 ${fmtKey(KEYS.missed)}=실패<br>${fmtKey(KEYS.count)}=+1 숫자</div>`;
     return;
   }
+  const lastSub = findLastSub();
+  subs.forEach(m => {
+    const c = scoreCounts(currentIdx, m.out);
+    const el = document.createElement('div');
+    el.className = 'mk-item ' + m.type + (m === lastSub ? ' latest' : '');
+    el.innerHTML = `
+      <div class="mk-label">${m.type === 'made' ? '🟢' : '🔴'} ${m.type === 'made' ? '누적 ' + (scoreStart + c.m).toLocaleString('en-US') : '실패 ' + c.x}<br>${fmtSec(m.out)}</div>
+      <button class="mk-del">✕</button>
+    `;
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('mk-del')) return;
+      video.currentTime = m.out; video.pause();
+    });
+    el.querySelector('.mk-del').addEventListener('click', () => {
+      const k = allMarkers.indexOf(m);
+      if (k >= 0) allMarkers.splice(k, 1);
+      syncShots();
+      renderMarkers(); updateUI(); saveSession();
+      flash('↩ 삭제됨', '#aaa');
+    });
+    list.appendChild(el);
+  });
   const sorted = sortedMarks(countMarks);
   const lastAdded = countMarks[countMarks.length-1];
   sorted.forEach((m, i) => {
@@ -1154,8 +1212,8 @@ function updateUI() {
   document.getElementById('tb-speed').textContent =
     `x${SPEEDS[speedIdx].toFixed(2)}`;
   // 전체 마커 수 집계
-  const totalMade   = videoData.reduce((s,v)=>s+v.madeEvents.length, 0);
-  const totalMissed = videoData.reduce((s,v)=>s+v.missedEvents.length, 0);
+  const totalMade   = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.type==='made').length, 0);     // 슛 모드 + 카운트 모드 합산
+  const totalMissed = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.type==='missed').length, 0);
   const totalCount  = videoData.reduce((s,v)=>s+v.countMarks.length, 0);
   document.getElementById('cnt-made').textContent   = `🟢 성공: ${totalMade}`;
   document.getElementById('cnt-missed').textContent = `🔴 실패: ${totalMissed}`;
@@ -1216,10 +1274,13 @@ function restoreAllSessions() {
       vd.missedEvents = fix(s.missedEvents);
       vd.allMarkers   = fix(s.allMarkers);
       vd.countMarks   = (Array.isArray(s.countMarks) ? s.countMarks : [])
-        .filter(m => m && isFinite(m.t)).map(m => ({ t: +m.t }));
+        .filter(m => m && isFinite(m.t)).map(m => ({ t: +m.t, seq: +m.seq || 0 }));
       if (s.fpsOk && s.fps && !s.fpsDefault) { vd.fps = s.fps; vd.fpsOk = true; vd.fpsDefault = false; }
       if (s.duration) vd.duration = s.duration;
-      restored += vd.madeEvents.length + vd.missedEvents.length + vd.countMarks.length;
+      restored += vd.madeEvents.length + vd.missedEvents.length + vd.countMarks.length
+                + vd.allMarkers.filter(m => m.sub).length;
+      vd.allMarkers.forEach(m => { if (m.seq > seqCounter) seqCounter = m.seq; });
+      vd.countMarks.forEach(m => { if (m.seq > seqCounter) seqCounter = m.seq; });
     });
   } catch(e) {}
   return restored;
@@ -1232,7 +1293,8 @@ function addMarker(type) {
   const out = video.currentTime;
   const pre = type === 'made' ? PRE_SECONDS : PRE_SECONDS_MISSED;
   let in_;
-  const lastMarker = allMarkers.length > 0 ? allMarkers[allMarkers.length-1] : null;
+  const shotList   = allMarkers.filter(m => !m.sub);   // 카운트 모드 자막 기록은 연속 성공 판정에서 제외
+  const lastMarker = shotList.length > 0 ? shotList[shotList.length-1] : null;
 
   // 연속 성공: 직전 마커가 같은 파일의 성공 마커일 때만
   if (type === 'made' && lastMarker && lastMarker.type === 'made'
@@ -1265,7 +1327,7 @@ function addCount() {
     flash('이미 이 위치에 카운트가 있어요', '#888');
     return;
   }
-  const mark = { t };
+  const mark = { t, seq: ++seqCounter };
   countMarks.push(mark);
   countRedo = [];
   videoData[currentIdx].countMarks = countMarks;
@@ -1274,16 +1336,52 @@ function addCount() {
 }
 
 // ==========================================
+// 카운트 모드: A/X 자막 기록 (컷/EDL 없이 점수판 자막만)
+// ==========================================
+function findLastSub() {
+  for (let i = allMarkers.length - 1; i >= 0; i--) if (allMarkers[i].sub) return allMarkers[i];
+  return null;
+}
+function addSub(type) {
+  const t = video.currentTime;
+  if (allMarkers.some(m => m.sub && m.type === type && Math.abs(m.out - t) < 0.05)) {
+    flash('이미 이 위치에 기록이 있어요', '#888');
+    return;
+  }
+  allMarkers.push({ type, in: t, out: t, fileName, sub: true, seq: ++seqCounter });
+  countRedo = [];
+  syncShots();
+  const c = scoreCounts(currentIdx, t);
+  flash(type === 'made'
+    ? `🟢 성공  누적 ${(scoreStart + c.m).toLocaleString('en-US')}`
+    : `🔴 실패  ${c.x}`,
+    type === 'made' ? 'var(--made)' : 'var(--missed)');
+  renderMarkers(); updateUI(); saveSession();
+}
+
+// ==========================================
 // 취소 / 복구
 // ==========================================
 function doUndo() {
   if (mode === 'count') {
-    if (!countMarks.length) { flash('취소할 카운트 없음','#888'); return; }
-    countRedo.push(countMarks.pop());
-    videoData[currentIdx].countMarks = countMarks;
+    // 카운트 모드: A/X 자막 기록과 C 카운트 중 가장 최근에 입력한 것을 취소
+    const lastSub = findLastSub();
+    const lastCnt = countMarks.length ? countMarks[countMarks.length-1] : null;
+    if (!lastSub && !lastCnt) { flash('취소할 항목 없음','#888'); return; }
+    if (lastSub && (!lastCnt || (lastSub.seq || 0) >= (lastCnt.seq || 0))) {
+      allMarkers.splice(allMarkers.indexOf(lastSub), 1);
+      countRedo.push({ kind:'sub', obj:lastSub });
+      syncShots();
+    } else {
+      countRedo.push({ kind:'count', obj:countMarks.pop() });
+      videoData[currentIdx].countMarks = countMarks;
+    }
   } else {
-    if (!allMarkers.length) { flash('취소할 마커 없음','#888'); return; }
-    redoStack.push(allMarkers.pop());
+    // 슛 모드: 카운트 모드에서 기록한 자막 전용 마커는 건드리지 않음
+    let i = allMarkers.length - 1;
+    while (i >= 0 && allMarkers[i].sub) i--;
+    if (i < 0) { flash('취소할 마커 없음','#888'); return; }
+    redoStack.push(allMarkers.splice(i, 1)[0]);
     pendingIn = null;
     syncShots();
   }
@@ -1293,8 +1391,9 @@ function doUndo() {
 function doRedo() {
   if (mode === 'count') {
     if (!countRedo.length) { flash('복구할 항목 없음','#888'); return; }
-    countMarks.push(countRedo.pop());
-    videoData[currentIdx].countMarks = countMarks;
+    const r = countRedo.pop();
+    if (r.kind === 'sub') { allMarkers.push(r.obj); syncShots(); }
+    else { countMarks.push(r.obj); videoData[currentIdx].countMarks = countMarks; }
   } else {
     if (!redoStack.length) { flash('복구할 항목 없음','#888'); return; }
     allMarkers.push(redoStack.pop());
@@ -1328,7 +1427,7 @@ document.addEventListener('keydown', e => {
 
   // 현재 모드에서 쓸 수 없는 키
   if (mode === 'count' && SHOT_ONLY_ACTIONS.includes(act)) {
-    flash(`🔢 카운트 모드예요 — ${fmtKey(KEYS.mode)}로 슛 모드 전환`, 'var(--count)'); return;
+    flash(`🔢 카운트 모드에는 IN점이 없어요 — ${fmtKey(KEYS.mode)}로 슛 모드 전환`, 'var(--count)'); return;
   }
   if (mode === 'shot' && COUNT_ONLY_ACTIONS.includes(act)) {
     flash(`🎯 슛 모드예요 — ${fmtKey(KEYS.mode)}로 카운트 모드 전환`, 'var(--accent)'); return;
@@ -1341,8 +1440,8 @@ document.addEventListener('keydown', e => {
     case 'faster': speedIdx = Math.min(SPEEDS.length-1, speedIdx+1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); break;
     case 'slower': speedIdx = Math.max(0, speedIdx-1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); break;
     case 'in':     pendingIn = video.currentTime; flash(`📍 IN  ${fmtSec(pendingIn)}`,'var(--in-pt)'); updateUI(); break;
-    case 'made':   addMarker('made'); break;
-    case 'missed': addMarker('missed'); break;
+    case 'made':   mode === 'count' ? addSub('made')   : addMarker('made');   break;
+    case 'missed': mode === 'count' ? addSub('missed') : addMarker('missed'); break;
     case 'count':  addCount(); break;
     case 'mode':   toggleMode(); break;
     case 'prev':   goPrevVideo(); break;
@@ -1411,7 +1510,7 @@ function buildMergedEDL(key, title) {
   let lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
   let recIn = 0, n = 0;
   videoData.forEach(vd => {
-    const fps = vd.fps;
+    const fps = edlFps(vd);
     exportEvents(vd, key).forEach(ev => {
       n++;
       const dur = ev.out - ev.in;
@@ -1447,7 +1546,7 @@ function buildMadeSRT() {
   const cues = [];
   let n = 0, rec = 0;
   videoData.forEach(vd => {
-    const fps = vd.fps || 60;
+    const fps = edlFps(vd) || 60;
     exportEvents(vd, 'madeEvents').forEach(ev => {
       n++;
       const dur = ev.out - ev.in;
@@ -1512,9 +1611,12 @@ function saveEDL() {
   const totalMade   = videoData.reduce((s,v)=>s+v.madeEvents.length, 0);
   const totalMissed = videoData.reduce((s,v)=>s+v.missedEvents.length, 0);
   const totalCount  = videoData.reduce((s,v)=>s+v.countMarks.length, 0);
-  if (!totalMade && !totalMissed && !totalCount) { flash('마커가 없습니다!','#f88'); return; }
+  // totalMade/totalMissed = 컷(EDL)에 들어가는 슛 모드 마커, score* = 카운트 모드 자막 기록까지 합친 점수판 기준
+  const scoreMade   = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.type==='made').length, 0);
+  const scoreMissed = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.type==='missed').length, 0);
+  if (!scoreMade && !scoreMissed && !totalCount) { flash('마커가 없습니다!','#f88'); return; }
 
-  // 슛 마커가 있는 영상은 FPS가 측정되어 있어야 함
+  // 슛 마커가 있는 영상은 FPS가 측정되어 있어야 함 (컷/EDL이 있을 때만)
   const waiting = videoData.find(v => (v.madeEvents.length || v.missedEvents.length) && !v.fpsOk);
   if (waiting) { flash('⏳ FPS 측정 중... (영상을 재생해 주세요)','#f88'); return; }
   const usedDefault = videoData.some(v => (v.madeEvents.length || v.missedEvents.length) && v.fpsDefault);
@@ -1527,7 +1629,7 @@ function saveEDL() {
   // 영상이 1개면 기존처럼, 여러 개면 합쳐서 하나로
   if (fileQueue.length === 1) {
     const vd  = videoData[0];
-    const fps = vd.fps;
+    const fps = edlFps(vd);
     if (vd.madeEvents.length)   files.push({ name:`${dateStr}_shots_made.edl`,   content:buildEDL(exportEvents(vd,'madeEvents'),   'SHOTS_MADE',   fps, vd.fileName) });
     if (vd.missedEvents.length) files.push({ name:`${dateStr}_shots_missed.edl`, content:buildEDL(exportEvents(vd,'missedEvents'), 'SHOTS_MISSED', fps, vd.fileName) });
   } else {
@@ -1551,7 +1653,7 @@ function saveEDL() {
   });
 
   // 점수판 자막 (영상별, 앞 영상 수치 이어받음)
-  if (scoreOn && (totalMade + totalMissed)) {
+  if (scoreOn && (scoreMade + scoreMissed)) {
     videoData.forEach((vd, i) => {
       const srt = buildScoreSRT(i);
       if (!srt.count) return;
@@ -1559,15 +1661,15 @@ function saveEDL() {
       files.push({ name:`${dateStr}_${idxStr}${safeName(vd.fileName)}_score.srt`, content:srt.content });
     });
   }
-  if (totalMade || totalMissed) lsSet('bm_lasttotal', scoreStart + totalMade);   // 다음에 이어서 시작할 누적값
+  if (scoreMade || scoreMissed) lsSet('bm_lasttotal', scoreStart + scoreMade);   // 다음에 이어서 시작할 누적값
 
   if (!files.length) { flash('저장할 내용이 없습니다!','#f88'); return; }
   files.forEach((f, i) => setTimeout(() => downloadText(f.content, f.name), i * 350));
 
   let msg;
-  if (totalMade + totalMissed) {
-    const pctV = (totalMade/(totalMade+totalMissed)*100).toFixed(1);
-    msg = `💾 저장완료  성공률 ${pctV}%  누적 ${(scoreStart + totalMade).toLocaleString('en-US')}  (파일 ${files.length}개)`;
+  if (scoreMade + scoreMissed) {
+    const pctV = (scoreMade/(scoreMade+scoreMissed)*100).toFixed(1);
+    msg = `💾 저장완료  성공률 ${pctV}%  누적 ${(scoreStart + scoreMade).toLocaleString('en-US')}  (파일 ${files.length}개${(totalMade + totalMissed) ? '' : ', 자막만'})`;
   } else {
     msg = `💾 카운트 자막 저장완료 (파일 ${files.length}개)`;
   }
