@@ -463,6 +463,7 @@
     <div class="sp-row"><div class="sp-label">실패 클립 뒤 여유 (초)</div><input type="number" class="sp-num" id="opt-post-missed" min="0" max="10" step="0.1"></div>
     <div class="sp-sec-title">점수판 자막 (오른쪽 상단)</div>
     <div class="sp-row"><div class="sp-label">점수판 표시 / 자막 저장</div><input type="checkbox" class="sp-check" id="opt-score-on"></div>
+    <div class="sp-row"><div class="sp-label">성공률 줄 표시</div><input type="checkbox" class="sp-check" id="opt-rate-on"></div>
     <div class="sp-row"><div class="sp-label">목표 슛 수</div><input type="number" class="sp-num" id="opt-goal" min="1" step="1"></div>
     <div class="sp-row"><div class="sp-label">시작 누적 (지금까지 넣은 수)</div><input type="number" class="sp-num" id="opt-start" min="0" step="1"></div>
     <div class="sp-row"><div class="sp-label" id="opt-last-hint" style="font-size:.72rem;color:var(--muted)"></div><button class="sp-btn" id="opt-last-apply" style="padding:3px 10px;font-size:.7rem">지난 저장값 적용</button></div>
@@ -522,6 +523,7 @@ let scoreStart = 0;        // 시작 누적 (오늘 시작 전까지 넣은 수)
 function lsGet(k) { try { return localStorage.getItem(k); } catch(e) { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch(e) {} }
 scoreOn    = lsGet('bm_scoreon') !== '0';
+let rateOn = lsGet('bm_rateon') !== '0';   // 점수판에 성공률 줄 표시
 scoreGoal  = Math.max(1, parseInt(lsGet('bm_goal'), 10)  || 100000);
 scoreStart = Math.max(0, parseInt(lsGet('bm_start'), 10) || 0);
 
@@ -580,6 +582,7 @@ function openSettings() {
   document.getElementById('opt-post-made').value   = postMade;
   document.getElementById('opt-post-missed').value = postMissed;
   document.getElementById('opt-score-on').checked = scoreOn;
+  document.getElementById('opt-rate-on').checked  = rateOn;
   document.getElementById('opt-goal').value  = scoreGoal;
   document.getElementById('opt-start').value = scoreStart;
   const last = parseInt(lsGet('bm_lasttotal'), 10);
@@ -643,6 +646,8 @@ function saveSettings() {
   lsSet('bm_tlfps', tlFps);
   lsSet('bm_postmade',   postMade);
   lsSet('bm_postmissed', postMissed);
+  rateOn = document.getElementById('opt-rate-on').checked;
+  lsSet('bm_rateon', rateOn ? '1' : '0');
   lsSet('bm_scoreon', scoreOn ? '1' : '0');
   lsSet('bm_goal',    scoreGoal);
   lsSet('bm_start',   scoreStart);
@@ -985,7 +990,13 @@ function scoreLines(made, missed) {
   const f = n => n.toLocaleString('en-US');
   const total = scoreStart + made;
   const remain = Math.max(0, scoreGoal - total);   // 실패는 남은 수에 영향 없음
-  return `남은 ${f(remain)}\n누적 ${f(total)}\n성공 ${f(made)}\n실패 ${f(missed)}`;
+  let s = `남은 ${f(remain)}\n누적 ${f(total)}\n성공 ${f(made)}\n실패 ${f(missed)}`;
+  if (rateOn) {
+    // 성공률 = 성공 / (성공 + 실패), 이번에 기록한 슛 기준 (시작 누적은 제외)
+    const att = made + missed;
+    s += `\n성공률 ${att ? (made / att * 100).toFixed(1) + '%' : '-'}`;
+  }
+  return s;
 }
 // 현재 시각까지 누른 A/X 기준 점수판
 function scoreCounts(idx, t) {
