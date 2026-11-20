@@ -336,6 +336,25 @@
   .mk-item.review { border-style:dashed; border-color:var(--accent); color:var(--accent); background:rgba(245,166,35,.08); }
   .mk-item.cur    { box-shadow:0 0 0 2px var(--in-pt); }
 
+  /* 검증 패널 */
+  #verify-panel {
+    display:none; position:fixed; inset:0; z-index:100;
+    background:rgba(8,8,16,.88); backdrop-filter:blur(8px);
+    align-items:center; justify-content:center;
+  }
+  #verify-panel.open { display:flex; }
+  .vp-note { font-size:.74rem; color:var(--muted); line-height:1.6; margin:6px 0; }
+  .vp-note b { color:var(--text); }
+  .vp-sum { display:flex; flex-wrap:wrap; gap:6px 16px; font-family:'IBM Plex Mono',monospace; font-size:.76rem; margin:8px 0; }
+  .vp-sum b { font-size:.95rem; }
+  .vp-sum .ok, .vp-tab td.ok { color:var(--made); }
+  .vp-sum .warn, .vp-tab td.warn { color:var(--accent); }
+  .vp-sum .bad, .vp-tab td.bad { color:var(--missed); }
+  .vp-tab { width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:.72rem; margin:6px 0; }
+  .vp-tab th { text-align:left; color:var(--muted); font-weight:600; padding:4px 6px; border-bottom:1px solid var(--border); }
+  .vp-tab td { padding:4px 6px; border-bottom:1px solid var(--border); }
+  .vp-truth { background:#1a1a28; border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:inherit; font-size:.72rem; padding:2px 4px; }
+
   /* 설정 패널 */
   #settings-panel {
     display:none; position:fixed; inset:0; z-index:100;
@@ -420,6 +439,7 @@
     <div class="tb-counts">
       <span class="cnt-made"   id="cnt-made">🟢 성공: 0</span>
       <span class="cnt-missed" id="cnt-missed">🔴 실패: 0</span>
+      <button id="btn-verify" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--in-pt);cursor:pointer;font-size:.7rem;font-family:'IBM Plex Mono',monospace;font-weight:700;padding:2px 8px;" title="자동 탐지 검증">🧪 검증</button>
       <button id="btn-settings" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:0 4px;" title="키보드 설정">⚙</button>
     </div>
   </div>
@@ -474,6 +494,9 @@
   </div>
 
 </div>
+
+<!-- ── 검증 패널 ── -->
+<div id="verify-panel"><div class="sp-box" id="vp-box" style="width:min(900px,94vw);max-height:88vh"></div></div>
 
 <!-- ── 설정 패널 ── -->
 <div id="settings-panel">
@@ -1364,6 +1387,7 @@ function actionFor(k) {
 document.addEventListener('keydown', e => {
   if (uploadScr.style.display !== 'none') return;
   if (settPanel.classList.contains('open')) return;
+  if (verPanel.classList.contains('open')) return;
   if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
 
   if (handleAutoKey(e)) return;   // 자동 탐지: 골대 지정 취소 / 후보 확인 키
@@ -1677,6 +1701,7 @@ function openAuto() {
   if (auto.busy) { flash('🤖 탐지 중이에요', 'var(--in-pt)'); return; }
   if (uploadScr.style.display !== 'none' || !videoData.length) return;
   if (review.active) endReview(true);
+  auto.forVerify = false;
   const pend = pendingReviewCount();
   const parts = [{ text: '🤖 자동 탐지', cls: 'ab-msg' }];
   if (pend) parts.push({ btn: `❓ 후보 확인 (${pend}개)`, cls: 'ok', fn: () => startReview() });
@@ -1697,12 +1722,12 @@ function beginPick() {
   const vd = videoData[currentIdx];
   const parts = [{ text: '① 림(골대 링)의 왼쪽 끝을 클릭하세요', cls: 'ab-msg' }];
   const prev = vd.hoop || loadLastHoop();
-  if (prev) parts.push({ btn: '이전 골대 위치 사용', cls: 'ok', fn: () => { auto.hoop = prev; cancelPick(true); showScanOptions(); } });
+  if (prev) parts.push({ btn: '이전 골대 위치 사용', cls: 'ok', fn: () => { auto.hoop = prev; cancelPick(true); afterHoopSet(); } });
   parts.push({ btn: '취소', fn: () => { cancelPick(); hideBar(); } });
   setBar(parts);
 }
 function clearDots() { hoopPick.innerHTML = ''; document.querySelectorAll('.hp-dot').forEach(d => d.remove()); }
-function cancelPick(keepBar) { auto.step = 'idle'; hoopPick.classList.remove('on'); clearDots(); }
+function cancelPick(keepBar) { auto.step = 'idle'; hoopPick.classList.remove('on'); clearDots(); if (!keepBar) auto.forVerify = false; }
 function loadLastHoop() {
   try { const h = JSON.parse(lsGet('bm_hoop') || 'null'); if (h && isFinite(h.x) && isFinite(h.y) && isFinite(h.w) && h.w > 0) return h; } catch (e) {}
   return null;
@@ -1728,8 +1753,15 @@ hoopPick.addEventListener('click', e => {
   if (wpx < 12) { flash('너무 가까워요. 림 양쪽 끝을 눌러 주세요', '#f88'); auto.p = [auto.p[0]]; dot.remove(); return; }
   auto.hoop = { x: (a.fx + b.fx) / 2, y: (a.fy + b.fy) / 2, w: wpx / vw };
   cancelPick(true);
-  showScanOptions();
+  afterHoopSet();
 });
+function afterHoopSet() {
+  if (auto.forVerify) {
+    auto.forVerify = false;
+    videoData[currentIdx].hoop = auto.hoop; lsSet('bm_hoop', JSON.stringify(auto.hoop)); saveSession();
+    hideBar(); openVerify();
+  } else showScanOptions();
+}
 
 // ── 탐지 옵션 ──
 function showScanOptions() {
@@ -2035,6 +2067,231 @@ function handleAutoKey(e) {
   if (k === KEYS.made)   { e.preventDefault(); if (!e.repeat) reviewDecide(true);  return true; }
   if (k === KEYS.missed) { e.preventDefault(); if (!e.repeat) reviewDecide(false); return true; }
   return false;
+}
+
+// ==========================================
+// 🧪 검증 탭 — 자동 탐지 결과를 내 기록과 비교하고, 작은 결과 파일(.json)로 저장
+//   (원본 영상을 보내지 않고 이 파일만 보내면 분석할 수 있어요)
+// ==========================================
+const ver = { running:false, gtSrc:'markers', srtEvents:null, srtName:'', rate:2, result:null, truth:{}, msg:'', showAll:false };
+const verPanel = document.getElementById('verify-panel');
+const verBox   = document.getElementById('vp-box');
+document.getElementById('btn-verify').addEventListener('click', e => { e.currentTarget.blur(); openVerify(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && verPanel.classList.contains('open')) closeVerify(); });
+verPanel.addEventListener('mousedown', e => { if (e.target === verPanel) closeVerify(); });
+
+function openVerify() {
+  if (!videoData.length || uploadScr.style.display !== 'none') return;
+  if (auto.busy && !ver.running) { flash('🤖 탐지 중에는 열 수 없어요', 'var(--in-pt)'); return; }
+  if (review.active) endReview(true);
+  video.pause();
+  verPanel.classList.add('open');
+  renderVerify();
+}
+function closeVerify() { verPanel.classList.remove('open'); }
+
+// 점수판 자막(.srt)에서 성공/실패가 늘어난 시각을 읽음 → [{t, type}]
+function parseScoreSRT(text) {
+  const sec = s => { const m = s.trim().match(/(\d+):(\d+):(\d+)[,.](\d+)/); return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4]) / 1000 : NaN; };
+  const ev = []; let pm = null, pf = null;
+  text.replace(/\r/g, '').split(/\n\s*\n/).forEach(block => {
+    const lines = block.trim().split('\n');
+    const ti = lines.findIndex(l => l.includes('-->'));
+    if (ti < 0) return;
+    const t = sec(lines[ti].split('-->')[0]);
+    const body = lines.slice(ti + 1).join('\n');
+    const mm = body.match(/성공\s+([\d,]+)/), mf = body.match(/실패\s+([\d,]+)/);
+    if (!mm || !mf || !isFinite(t)) return;
+    const m = parseInt(mm[1].replace(/,/g, ''), 10), f = parseInt(mf[1].replace(/,/g, ''), 10);
+    if (pm !== null) {
+      for (let i = pm; i < m; i++) ev.push({ t, type: 'made' });
+      for (let i = pf; i < f; i++) ev.push({ t, type: 'missed' });
+    }
+    pm = m; pf = f;
+  });
+  return ev.sort((a, b) => a.t - b.t);
+}
+function verGt() {
+  if (ver.gtSrc === 'srt') return (ver.srtEvents || []).slice();
+  return videoData[currentIdx].allMarkers.filter(m => !m.auto).map(m => ({ t: m.out, type: m.type })).sort((a, b) => a.t - b.t);
+}
+
+// 탐지된 슛 ↔ 내 기록 짝짓기
+function compareShots(shots, gt) {
+  const used = new Set(), rows = [];
+  shots.forEach(sh => {
+    const j = gt.findIndex((g, j) => !used.has(j) && g.t >= sh.tEnter - 1.0 && g.t <= sh.tEnd + 2.5);
+    if (j >= 0) used.add(j);
+    rows.push({ kind: 'shot', t: sh.tEnter, tEnd: sh.tEnd, tBelow: sh.tBelow, nBelow: sh.nBelow, det: sh.cand ? 'made' : 'missed', gt: j >= 0 ? gt[j].type : null, gtT: j >= 0 ? gt[j].t : null });
+  });
+  gt.forEach((g, j) => { if (!used.has(j)) rows.push({ kind: 'gtonly', t: g.t, gt: g.type, gtT: g.t, det: null }); });
+  rows.sort((a, b) => a.t - b.t);
+  rows.forEach(r => { r.id = (r.kind === 'shot' ? 's' : 'g') + r.t.toFixed(2); });
+  return rows;
+}
+// 확인(truth)한 값이 있으면 그것을 기준으로, 없으면 내 기록을 기준으로 집계
+function verSummary(rows, truth) {
+  const S = { shots: 0, cand: 0, agree: 0, falseCand: 0, missedMade: 0, extra: 0, gtOnly: 0, notShot: 0 };
+  rows.forEach(r => {
+    const tr = truth[r.id];
+    if (tr === 'none') { S.notShot++; return; }
+    const ref = tr || r.gt;
+    if (r.kind === 'shot') {
+      S.shots++; if (r.det === 'made') S.cand++;
+      if (!ref) { S.extra++; return; }
+      if (ref === r.det) S.agree++; else if (r.det === 'made') S.falseCand++; else S.missedMade++;
+    } else if (ref) S.gtOnly++;
+  });
+  return S;
+}
+function rowStatus(r, truth) {
+  const tr = truth[r.id];
+  if (tr === 'none') return ['슛 아님(제외)', ''];
+  const ref = tr || r.gt;
+  if (r.kind === 'gtonly') return ['탐지 못 함', 'bad'];
+  if (!ref) return ['기록 없음', 'warn'];
+  if (ref === r.det) return ['일치', 'ok'];
+  return r.det === 'made' ? ['후보지만 실제는 실패', 'warn'] : ['⚠ 성공을 놓침', 'bad'];
+}
+const lab = t => t === 'made' ? '성공' : t === 'missed' ? '실패' : '-';
+
+function renderVerify() {
+  const vd = videoData[currentIdx];
+  const hoop = vd.hoop || loadLastHoop();
+  const gt = verGt();
+  const manualN = vd.allMarkers.filter(m => !m.auto).length;
+  let h = `<div class="sp-title">🧪 검증 — 자동 탐지 vs 내 기록</div>
+    <div class="vp-note">원본 영상을 보내지 않아도 돼요. 이 화면에서 탐지를 돌려 <b>내 기록과 비교</b>하고, 아래 <b>결과 파일(.json, 작은 용량)</b>만 저장해서 보내 주세요. (영상 <b>${esc(vd.fileName)}</b>)</div>
+    <div class="sp-sec-title">1. 정답으로 쓸 내 기록</div>
+    <div class="sp-row"><div class="sp-label">기록 출처</div>
+      <select class="sp-num" id="vp-src" style="width:auto">
+        <option value="markers"${ver.gtSrc === 'markers' ? ' selected' : ''}>이 영상에 직접 찍은 마커 (${manualN}개)</option>
+        <option value="srt"${ver.gtSrc === 'srt' ? ' selected' : ''}>점수판 자막(.srt) 불러오기</option>
+      </select></div>`;
+  if (ver.gtSrc === 'srt') {
+    h += `<div class="sp-row"><div class="sp-label">${ver.srtName ? esc(ver.srtName) + ` (성공/실패 ${ver.srtEvents ? ver.srtEvents.length : 0}건)` : '이 영상의 _score.srt를 선택하세요'}</div>
+      <input type="file" id="vp-srt" accept=".srt,.txt" style="font-size:.72rem;color:var(--muted)"></div>`;
+  }
+  h += `<div class="sp-sec-title">2. 골대 위치</div>
+    <div class="sp-row"><div class="sp-label">${hoop ? '지정됨 (림 폭 약 ' + Math.round(hoop.w * (video.videoWidth || 1920)) + 'px)' : '아직 지정 안 됨'}</div>
+      <button class="sp-btn" id="vp-hoop" style="padding:3px 10px;font-size:.7rem">${hoop ? '다시 지정' : '골대 지정'}</button></div>
+    <div class="sp-sec-title">3. 탐지 실행</div>
+    <div class="sp-row"><div class="sp-label">스캔 배속</div>
+      <select class="sp-num" id="vp-rate" style="width:auto">
+        ${[1, 2, 3, 4].map(r => `<option value="${r}"${ver.rate === r ? ' selected' : ''}>${r}x${r === 2 ? ' (권장)' : ''}</option>`).join('')}
+      </select></div>
+    <div class="sp-row"><div class="sp-label">${ver.running ? '탐지 중...' : '정답 ' + gt.length + '건 · 이 영상 ' + fmtSec(vd.duration || 0)}</div>
+      ${ver.running ? '<button class="sp-btn" id="vp-stop">중지</button>' : '<button class="sp-btn primary" id="vp-run">▶ 검증 실행</button>'}</div>
+    <div class="ab-prog" style="margin:6px 0;${ver.running ? '' : 'display:none'}"><div id="vp-prog" style="width:${Math.round((ver.progress || 0) * 100)}%"></div></div>`;
+  if (ver.msg) h += `<div class="vp-note" style="color:var(--accent)">${esc(ver.msg)}</div>`;
+
+  const R = ver.result;
+  if (R) {
+    const S = verSummary(R.rows, ver.truth);
+    const refN = S.agree + S.falseCand + S.missedMade;
+    h += `<div class="sp-sec-title">결과 (${esc(R.videoName)})</div>
+      <div class="vp-sum">
+        <span>탐지한 슛 <b>${S.shots}</b></span><span>성공 후보 <b>${S.cand}</b></span>
+        <span class="ok">일치 <b>${S.agree}</b>/${refN}</span>
+        <span class="warn">후보지만 실제 실패 <b>${S.falseCand}</b></span>
+        <span class="${S.missedMade ? 'bad' : 'ok'}">성공을 놓침 <b>${S.missedMade}</b></span>
+        <span class="warn">기록 없는 슛 <b>${S.extra}</b></span>
+        <span class="${S.gtOnly ? 'bad' : 'ok'}">탐지 못 한 기록 <b>${S.gtOnly}</b></span>
+      </div>
+      <div class="vp-note">틀렸다고 보이는 줄은 영상을 보고 <b>실제 결과</b>를 골라 주세요. (내 기록이 틀렸을 수도 있어요) 고른 값이 정답으로 반영돼 결과 파일에 함께 저장됩니다.</div>
+      <label class="vp-note"><input type="checkbox" id="vp-all" ${ver.showAll ? 'checked' : ''}> 일치한 슛도 보기</label>
+      <table class="vp-tab"><tr><th>시각</th><th>내 기록</th><th>탐지</th><th>판정</th><th>실제 결과</th><th></th></tr>`;
+    R.rows.forEach(r => {
+      const [st, cls] = rowStatus(r, ver.truth);
+      if (!ver.showAll && cls === 'ok') return;
+      const tr = ver.truth[r.id] || '';
+      h += `<tr><td>${fmtSec(r.t)}</td><td>${lab(r.gt)}</td><td>${r.kind === 'shot' ? (r.det === 'made' ? '성공 후보' : '실패') : '-'}</td><td class="${cls}">${st}</td>
+        <td><select class="vp-truth" data-id="${r.id}"><option value="">(그대로)</option><option value="made"${tr === 'made' ? ' selected' : ''}>성공</option><option value="missed"${tr === 'missed' ? ' selected' : ''}>실패</option><option value="none"${tr === 'none' ? ' selected' : ''}>슛 아님</option></select></td>
+        <td><button class="sp-btn vp-go" data-t="${r.t}" style="padding:2px 8px;font-size:.68rem">▶ 보기</button></td></tr>`;
+    });
+    h += `</table>
+      <div class="sp-footer"><button class="sp-btn primary" id="vp-export">💾 결과 파일 저장 (.json)</button></div>`;
+  }
+  h += `<div class="sp-footer"><button class="sp-btn" id="vp-close">닫기</button></div>`;
+  verBox.innerHTML = h;
+
+  const $ = id => document.getElementById(id);
+  $('vp-close').onclick = closeVerify;
+  $('vp-src').onchange = e => { ver.gtSrc = e.target.value; renderVerify(); };
+  if ($('vp-srt')) $('vp-srt').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const text = await f.text();
+    ver.srtEvents = parseScoreSRT(text); ver.srtName = f.name;
+    ver.msg = ver.srtEvents.length ? '' : '자막에서 성공/실패 변화를 찾지 못했어요 (점수판 _score.srt가 맞는지 확인해 주세요)';
+    renderVerify();
+  };
+  $('vp-hoop').onclick = () => { closeVerify(); auto.forVerify = true; beginPick(); auto.forVerify = true; };
+  $('vp-rate').onchange = e => { ver.rate = parseFloat(e.target.value); };
+  if ($('vp-run'))  $('vp-run').onclick  = runVerify;
+  if ($('vp-stop')) $('vp-stop').onclick = () => { auto.abort = true; (auto._abortFns || []).forEach(f => f()); };
+  if ($('vp-all'))  $('vp-all').onchange = e => { ver.showAll = e.target.checked; renderVerify(); };
+  if ($('vp-export')) $('vp-export').onclick = exportVerify;
+  verBox.querySelectorAll('.vp-truth').forEach(sel => sel.onchange = () => {
+    if (sel.value) ver.truth[sel.dataset.id] = sel.value; else delete ver.truth[sel.dataset.id];
+    const y = verPanel.scrollTop, by = verBox.scrollTop; renderVerify(); verBox.scrollTop = by; verPanel.scrollTop = y;
+  });
+  verBox.querySelectorAll('.vp-go').forEach(b => b.onclick = () => {
+    closeVerify(); video.currentTime = Math.max(0, parseFloat(b.dataset.t) - 1.5); video.play().catch(() => {});
+  });
+}
+
+async function runVerify() {
+  if (ver.running || auto.busy) return;
+  const vd = videoData[currentIdx];
+  const hoop = vd.hoop || loadLastHoop();
+  if (!hoop) { ver.msg = '먼저 골대 위치를 지정해 주세요.'; renderVerify(); return; }
+  const gt = verGt();
+  if (!gt.length) { ver.msg = ver.gtSrc === 'srt' ? '점수판 자막(.srt)을 먼저 불러와 주세요.' : '이 영상에 직접 찍은 마커가 없어요. 마킹을 하거나 점수판 자막을 불러오세요.'; renderVerify(); return; }
+  ver.running = true; auto.busy = true; auto.abort = false; auto._abortFns = []; ver.progress = 0; ver.msg = ''; ver.truth = {};
+  renderVerify();
+  const idx = currentIdx;
+  const res = await scanOne(idx, hoop, ver.rate, (p, phase) => {
+    ver.progress = phase === 'static' ? 0 : p;
+    const el = document.getElementById('vp-prog'); if (el) el.style.width = Math.round(ver.progress * 100) + '%';
+  });
+  ver.running = false; auto.busy = false;
+  const aborted = auto.abort; auto.abort = false; auto._abortFns = [];
+  if (aborted) { ver.msg = '중지했어요.'; }
+  else if (!res.ok) { ver.msg = '⚠ ' + (res.err || '탐지 실패'); }
+  else {
+    const shots = analyzeShots(res.samples);
+    const rows  = compareShots(shots, gt);
+    vd.hoop = hoop; saveSession();
+    ver.result = { videoName: vd.fileName, duration: vd.duration || res.duration, fps: vd.fps, hoop, rate: ver.rate, gtSrc: ver.gtSrc, gtN: gt.length, rows, shots, samples: res.samples, medStep: res.medStep };
+    if (res.medStep > 0.12) ver.msg = '⚠ 프레임이 많이 건너뛰어졌어요 — 스캔 배속을 낮춰 보세요';
+  }
+  if (verPanel.classList.contains('open')) renderVerify();
+  else flash(aborted ? '검증 중지' : '🧪 검증 완료 — 검증 탭에서 확인하세요', 'var(--in-pt)');
+}
+
+// 결과 파일: 구간별 표본 + 판정 (영상 자체는 들어있지 않음)
+function exportVerify() {
+  const R = ver.result; if (!R) return;
+  const wins = [];
+  R.rows.forEach(r => wins.push(r.kind === 'shot' ? [r.t - 1.0, (r.tEnd || r.t) + 2.5] : [r.t - 3.0, r.t + 1.5]));
+  const inWin = t => wins.some(w => t >= w[0] && t <= w[1]);
+  const samples = R.samples.filter(s => inWin(s.t)).map(s => [+s.t.toFixed(3), s.n, +s.x.toFixed(1), +s.y.toFixed(1)]);
+  const S = verSummary(R.rows, ver.truth);
+  const out = {
+    app: 'basketball_marker', kind: 'auto-detect-verify', createdAt: new Date().toISOString(),
+    video: { name: R.videoName, duration: R.duration, fps: R.fps }, hoop: R.hoop, scanRate: R.rate, medStep: R.medStep,
+    gtSource: R.gtSrc, gtCount: R.gtN,
+    params: { ARR: AD.ARR, BELOW: AD.BELOW, CLUSTER_GAP: AD.CLUSTER_GAP, BELOW_WIN: AD.BELOW_WIN, MIN_BELOW_N: AD.MIN_BELOW_N },
+    summary: S,
+    rows: R.rows.map(r => ({ id: r.id, kind: r.kind, t: +r.t.toFixed(3), tEnd: r.tEnd != null ? +r.tEnd.toFixed(3) : null, tBelow: r.tBelow != null ? +r.tBelow.toFixed(3) : null, nBelow: r.nBelow != null ? r.nBelow : null, detected: r.det, myRecord: r.gt, myRecordT: r.gtT != null ? +r.gtT.toFixed(3) : null, truth: ver.truth[r.id] || null })),
+    samplesNote: '[t, orangePixels, x, y] — x,y는 림 중심 기준(림 폭 65px로 정규화), 슛 전후 구간만 포함',
+    samples,
+  };
+  const now = new Date();
+  const ds = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const json = JSON.stringify(out);
+  downloadText(json, `verify_${ds}_${safeName(R.videoName)}.json`);
+  flash(`💾 검증 결과 저장 (${Math.max(1, Math.round(json.length / 1024))}KB)`, 'var(--accent)');
 }
 
 // ==========================================
