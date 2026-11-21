@@ -345,6 +345,7 @@
   #live-box.min #lv-wrap { height:0; overflow:hidden; }
   #lv-roi { position:absolute; border:1px dashed #ffd24a; pointer-events:none; display:none; z-index:2; }
   #lv-rim { position:absolute; width:12px; height:12px; margin:-6px 0 0 -6px; border:2px solid #4af; border-radius:50%; pointer-events:none; display:none; z-index:2; }
+  #lv-ball { position:absolute; border:2px solid #ff3b3b; border-radius:50%; pointer-events:none; display:none; z-index:3; transform:translate(-50%,-50%); box-shadow:0 0 6px #ff3b3b; }
   #lv-info { padding:6px 10px; font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--text); line-height:1.6; }
   #clip-panel { display:none; position:fixed; inset:0; z-index:110; background:rgba(8,8,16,.9); backdrop-filter:blur(8px); align-items:center; justify-content:center; }
   #clip-panel.open { display:flex; }
@@ -511,7 +512,7 @@
 </div>
 
 <!-- ── 탐지 미리보기 / 구간별 골대 ── -->
-<div id="live-box"><div id="lv-head"><span id="lv-title">🤖 탐지 중</span><button id="lv-min" title="영상 접기/펴기">▾</button></div><div id="lv-wrap"><div id="lv-roi"></div><div id="lv-rim"></div></div><div id="lv-info"></div></div>
+<div id="live-box"><div id="lv-head"><span id="lv-title">🤖 탐지 중</span><button id="lv-min" title="영상 접기/펴기">▾</button></div><div id="lv-wrap"><div id="lv-roi"></div><div id="lv-rim"></div><div id="lv-ball"></div></div><div id="lv-info"></div></div>
 <div id="clip-panel"><div class="sp-box" id="cp-box" style="width:min(980px,96vw);max-height:92vh"></div></div>
 <canvas id="cp-loupe" width="192" height="192"></canvas>
 
@@ -1820,14 +1821,14 @@ function showScanOptions() {
 
 // ── 탐지 중 미리보기 (영상이 움직이고 슛 개수가 올라가는 것을 볼 수 있음) ──
 const lvBox = document.getElementById('live-box'), lvWrap = document.getElementById('lv-wrap'), lvInfo = document.getElementById('lv-info'), lvTitle = document.getElementById('lv-title');
-const lvRoi = document.getElementById('lv-roi'), lvRim = document.getElementById('lv-rim');
+const lvRoi = document.getElementById('lv-roi'), lvRim = document.getElementById('lv-rim'), lvBall = document.getElementById('lv-ball');
 document.getElementById('lv-min').addEventListener('click', e => { lvBox.classList.toggle('min'); e.currentTarget.textContent = lvBox.classList.contains('min') ? '▸' : '▾'; e.currentTarget.blur(); });
 function liveOpen(title, sv) {
   lvWrap.querySelectorAll('video').forEach(v => v.remove());
   sv.style.cssText = 'width:100%;display:block';
   lvWrap.insertBefore(sv, lvWrap.firstChild);
   lvTitle.textContent = title; lvInfo.textContent = '';
-  lvRoi.style.display = 'none'; lvRim.style.display = 'none';
+  lvRoi.style.display = 'none'; lvRim.style.display = 'none'; lvBall.style.display = 'none';
   lvBox.classList.add('on');
 }
 function liveClose() { lvBox.classList.remove('on'); lvWrap.querySelectorAll('video').forEach(v => v.remove()); }
@@ -1841,7 +1842,7 @@ function liveHoop(hoop, vw, vh) {
 }
 // 지금까지 탐지된 슛 개수를 실시간으로 세기 (끝난 슛은 확정하고 버려서 가볍게 유지)
 function makeLiveCounter() {
-  let buf = [], fin = { shots: 0, cand: 0 };
+  let buf = [], fin = { shots: 0, cand: 0 }, times = [];
   return {
     add(s) { buf.push(s); },
     snap(curT) {
@@ -1849,12 +1850,12 @@ function makeLiveCounter() {
       let k = 0;
       while (k < shots.length && shots[k].tLast < curT - (AD.CLUSTER_GAP + AD.BELOW_WIN + 0.5)) k++;
       if (k) {
-        for (let i = 0; i < k; i++) { fin.shots++; if (shots[i].cand) fin.cand++; }
+        for (let i = 0; i < k; i++) { fin.shots++; if (shots[i].cand) fin.cand++; times.push(shots[i].tEnter); }
         const cut = shots[k - 1].tEnd + 0.001;
         buf = buf.filter(s => s.t > cut);
       }
       const pend = shots.slice(k);
-      return { shots: fin.shots + pend.length, cand: fin.cand + pend.filter(s => s.cand).length };
+      return { shots: fin.shots + pend.length, cand: fin.cand + pend.filter(s => s.cand).length, last: times.concat(pend.map(x => x.tEnter)).slice(-4) };
     }
   };
 }
@@ -1906,14 +1907,20 @@ function scanOne(idx, hoop, rate, onProg, opts) {
         const isOrange = (r, g, b) => r > 110 && (r - b) > 55 && (r - g) > 25 && (r - g) < 110 && (g - b) >= 0 && (g - b) < 70;
         const seekTo = t => new Promise(res => { const to = setTimeout(res, 4000); sv.onseeked = () => { clearTimeout(to); res(); }; sv.currentTime = t; });
         let stat = null, curSamples = null, lc = null;
-        const tot = { shots: 0, cand: 0 };
+        const tot = { shots: 0, cand: 0, last: [] };
         const sample = t => {
           const d = grab();
           let n = 0, sxx = 0, syy = 0;
           for (let i = 0, p = 0; i < W * H; i++, p += 4) {
             if (!stat[i] && isOrange(d[p], d[p + 1], d[p + 2])) { n++; sxx += i % W; syy += (i / W) | 0; }
           }
-          if (n >= 20) { const s = { t, n, x: sxx / n - AD.RIM_X, y: syy / n - AD.RIM_Y }; curSamples.push(s); lc.add(s); }
+          if (n >= 20) {
+            const s = { t, n, x: sxx / n - AD.RIM_X, y: syy / n - AD.RIM_Y }; curSamples.push(s); lc.add(s);
+            if (lvBox.classList.contains('on') && !lvBox.classList.contains('min')) {   // 앱이 "공"이라고 보는 위치를 빨간 원으로 표시
+              const px = (G.sx + (sxx / n) / G.s) / vw, py = (G.sy + (syy / n) / G.s) / vh, rr = Math.sqrt(n / Math.PI) / G.s / vw * 100 * 2;
+              lvBall.style.cssText = `display:block;left:${px * 100}%;top:${py * 100}%;width:${Math.max(rr, 1.6)}%;height:${Math.max(rr, 1.6) * vw / vh}%`;
+            }
+          } else lvBall.style.display = 'none';
         };
         // 영상 FPS도 함께 측정 (처음 잠깐 1배속)
         const fpsS = []; let lastF = null, fpsDone = false, calls = 0, segNo = 0;
@@ -1924,6 +1931,8 @@ function scanOne(idx, hoop, rate, onProg, opts) {
         const showLive = t => {
           const c = lc.snap(t);
           let h = `⏱ <b>${fmtSec(t)}</b> / ${fmtSec(dur)}<br>슛 <b>${tot.shots + c.shots}</b> · 성공 후보 <b style="color:var(--made)">${tot.cand + c.cand}</b> · 실패 <b style="color:var(--missed)">${tot.shots + c.shots - tot.cand - c.cand}</b>`;
+          const lastS = tot.last.concat(c.last || []).slice(-4);
+          if (lastS.length) h += `<br>최근 슛: ${lastS.map(fmtSec).join(' · ')}`;
           if (segs.length > 1) h += `<br>구간 ${segNo}/${segs.length}`;
           if (opts.liveExtra) { const x = opts.liveExtra(t); if (x) h += '<br>' + x; }
           liveInfo(h);
@@ -1988,7 +1997,7 @@ function scanOne(idx, hoop, rate, onProg, opts) {
           if (!fpsDone) sv.playbackRate = 1;
           await new Promise(res => { segResolve = res; sv.requestVideoFrameCallback(cb); sv.play().catch(() => {}); });
           sv.pause();
-          const c = lc.snap(Infinity); tot.shots += c.shots; tot.cand += c.cand; lc = makeLiveCounter();
+          const c = lc.snap(Infinity); tot.shots += c.shots; tot.cand += c.cand; tot.last = tot.last.concat(c.last || []).slice(-4); lc = makeLiveCounter();
           showLive(segEnd);
         }
         finish(true);
