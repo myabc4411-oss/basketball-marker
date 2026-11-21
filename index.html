@@ -336,6 +336,21 @@
   .mk-item.review { border-style:dashed; border-color:var(--accent); color:var(--accent); background:rgba(245,166,35,.08); }
   .mk-item.cur    { box-shadow:0 0 0 2px var(--in-pt); }
 
+  /* 탐지 미리보기 / 구간별 골대 */
+  #live-box { display:none; position:fixed; right:12px; bottom:12px; width:min(420px,46vw); z-index:300; background:#12121c; border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,.65); overflow:hidden; }
+  #live-box.on { display:block; }
+  #lv-head { display:flex; justify-content:space-between; align-items:center; padding:5px 10px; font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; color:var(--in-pt); }
+  #lv-head button { background:none; border:none; color:var(--muted); cursor:pointer; font-size:.8rem; }
+  #lv-wrap { position:relative; background:#000; line-height:0; }
+  #live-box.min #lv-wrap { height:0; overflow:hidden; }
+  #lv-roi { position:absolute; border:1px dashed #ffd24a; pointer-events:none; display:none; z-index:2; }
+  #lv-rim { position:absolute; width:12px; height:12px; margin:-6px 0 0 -6px; border:2px solid #4af; border-radius:50%; pointer-events:none; display:none; z-index:2; }
+  #lv-info { padding:6px 10px; font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--text); line-height:1.6; }
+  #clip-panel { display:none; position:fixed; inset:0; z-index:110; background:rgba(8,8,16,.9); backdrop-filter:blur(8px); align-items:center; justify-content:center; }
+  #clip-panel.open { display:flex; }
+  .cp-cv { width:100%; display:block; border:1px solid var(--border); border-radius:6px; cursor:crosshair; margin:6px 0; }
+  #cp-loupe { display:none; position:fixed; z-index:400; border:2px solid var(--accent); border-radius:8px; pointer-events:none; background:#000; width:192px; height:192px; }
+  #verify-panel { z-index:100; }
   /* 검증 패널 */
   #verify-panel {
     display:none; position:fixed; inset:0; z-index:100;
@@ -494,6 +509,11 @@
   </div>
 
 </div>
+
+<!-- ── 탐지 미리보기 / 구간별 골대 ── -->
+<div id="live-box"><div id="lv-head"><span id="lv-title">🤖 탐지 중</span><button id="lv-min" title="영상 접기/펴기">▾</button></div><div id="lv-wrap"><div id="lv-roi"></div><div id="lv-rim"></div></div><div id="lv-info"></div></div>
+<div id="clip-panel"><div class="sp-box" id="cp-box" style="width:min(980px,96vw);max-height:92vh"></div></div>
+<canvas id="cp-loupe" width="192" height="192"></canvas>
 
 <!-- ── 검증 패널 ── -->
 <div id="verify-panel"><div class="sp-box" id="vp-box" style="width:min(900px,94vw);max-height:88vh"></div></div>
@@ -1273,6 +1293,10 @@ function restoreAllSessions() {
       if (s.fpsOk && s.fps && !s.fpsDefault) { vd.fps = s.fps; vd.fpsOk = true; vd.fpsDefault = false; }
       if (s.duration) vd.duration = s.duration;
       if (s.hoop && isFinite(s.hoop.x) && isFinite(s.hoop.y) && isFinite(s.hoop.w)) vd.hoop = s.hoop;
+      if (Array.isArray(s.clips) && s.clips.every(c => c && isFinite(c.t0) && isFinite(c.t1) && isFinite(c.g))) {
+        vd.clips = s.clips.map(c => ({ t0: c.t0, t1: c.t1, g: c.g }));
+        vd.hoops = (Array.isArray(s.hoops) ? s.hoops : []).map(h => h && isFinite(h.x) && isFinite(h.y) && isFinite(h.w) ? h : null);
+      }
       restored += vd.madeEvents.length + vd.missedEvents.length
                 + vd.allMarkers.filter(m => m.sub).length;
       vd.allMarkers.forEach(m => { if (m.seq > seqCounter) seqCounter = m.seq; });
@@ -1387,7 +1411,7 @@ function actionFor(k) {
 document.addEventListener('keydown', e => {
   if (uploadScr.style.display !== 'none') return;
   if (settPanel.classList.contains('open')) return;
-  if (verPanel.classList.contains('open')) return;
+  if (verPanel.classList.contains('open') || cpPanel.classList.contains('open')) return;
   if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
 
   if (handleAutoKey(e)) return;   // 자동 탐지: 골대 지정 취소 / 후보 확인 키
@@ -1668,7 +1692,7 @@ function analyzeShots(samples) {
   return shots;
 }
 
-const auto   = { busy:false, abort:false, step:'idle', p:[], hoop:null, scope:'one', rate:3 };
+const auto   = { busy:false, abort:false, step:'idle', p:[], hoop:null, scope:'one', rate:3, hoopMode:'one' };
 const review = { active:false, list:[], k:0, loopStart:0, loopEnd:0 };
 let afterLoad = null;
 const autoBar    = document.getElementById('auto-bar');
@@ -1705,7 +1729,8 @@ function openAuto() {
   const pend = pendingReviewCount();
   const parts = [{ text: '🤖 자동 탐지', cls: 'ab-msg' }];
   if (pend) parts.push({ btn: `❓ 후보 확인 (${pend}개)`, cls: 'ok', fn: () => startReview() });
-  parts.push({ btn: pend ? '새로 탐지' : '▶ 탐지 시작', cls: 'primary', fn: () => beginPick() });
+  parts.push({ btn: pend ? '새로 탐지' : '▶ 탐지 시작', cls: 'primary', fn: () => { auto.hoopMode = 'one'; beginPick(); } });
+  parts.push({ btn: '🎬 구간별 탐지 (편집·이어붙인 영상)', fn: () => { auto.hoopMode = 'clips'; auto.scope = 'one'; showScanOptions(); } });
   parts.push({ btn: '닫기', fn: () => { cancelPick(); hideBar(); } });
   parts.push({ text: '골대 주변 공의 움직임으로 슛 시점을 찾아요. 림에 맞고 빗나간 슛이 섞일 수 있어 성공 후보는 직접 확인합니다.' });
   setBar(parts);
@@ -1727,7 +1752,7 @@ function beginPick() {
   setBar(parts);
 }
 function clearDots() { hoopPick.innerHTML = ''; document.querySelectorAll('.hp-dot').forEach(d => d.remove()); }
-function cancelPick(keepBar) { auto.step = 'idle'; hoopPick.classList.remove('on'); clearDots(); if (!keepBar) auto.forVerify = false; }
+function cancelPick(keepBar) { cpLoupe.style.display = 'none'; auto.step = 'idle'; hoopPick.classList.remove('on'); clearDots(); if (!keepBar) auto.forVerify = false; }
 function loadLastHoop() {
   try { const h = JSON.parse(lsGet('bm_hoop') || 'null'); if (h && isFinite(h.x) && isFinite(h.y) && isFinite(h.w) && h.w > 0) return h; } catch (e) {}
   return null;
@@ -1755,43 +1780,100 @@ hoopPick.addEventListener('click', e => {
   cancelPick(true);
   afterHoopSet();
 });
+hoopPick.addEventListener('mousemove', e => {
+  if (auto.step !== 'pick1' && auto.step !== 'pick2') return;
+  const r = video.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+  if (fx < 0 || fx > 1 || fy < 0 || fy > 1 || !video.videoWidth) { cpLoupe.style.display = 'none'; return; }
+  const c = cpLoupe.getContext('2d'), sw = 48, vw = video.videoWidth, vh = video.videoHeight;
+  c.fillStyle = '#000'; c.fillRect(0, 0, 192, 192);
+  try { c.drawImage(video, fx * vw - sw / 2, fy * vh - sw / 2, sw, sw, 0, 0, 192, 192); } catch (er) {}
+  c.strokeStyle = '#4af'; c.lineWidth = 1; c.beginPath(); c.moveTo(96, 0); c.lineTo(96, 192); c.moveTo(0, 96); c.lineTo(192, 96); c.stroke();
+  cpLoupe.style.display = 'block';
+  cpLoupe.style.left = Math.min(innerWidth - 200, e.clientX + 24) + 'px'; cpLoupe.style.top = Math.max(8, Math.min(innerHeight - 200, e.clientY - 96)) + 'px';
+});
+hoopPick.addEventListener('mouseleave', () => { cpLoupe.style.display = 'none'; });
 function afterHoopSet() {
   if (auto.forVerify) {
     auto.forVerify = false;
     videoData[currentIdx].hoop = auto.hoop; lsSet('bm_hoop', JSON.stringify(auto.hoop)); saveSession();
     hideBar(); openVerify();
-  } else showScanOptions();
+  } else { auto.hoopMode = 'one'; showScanOptions(); }
 }
 
 // ── 탐지 옵션 ──
 function showScanOptions() {
   const vw = video.videoWidth || 1920;
-  const parts = [{ text: `골대 지정됨 (림 폭 약 ${Math.round(auto.hoop.w * vw)}px)`, cls: 'ab-msg' }];
-  if (fileQueue.length > 1) {
+  const clipsMode = auto.hoopMode === 'clips';
+  const parts = [{ text: clipsMode ? '🎬 구간별 골대 — 편집점을 찾아 구간마다 골대를 지정해요' : `골대 지정됨 (림 폭 약 ${Math.round(auto.hoop.w * vw)}px)`, cls: 'ab-msg' }];
+  if (!clipsMode && fileQueue.length > 1) {
     parts.push({ text: '범위' });
     parts.push({ node: makeSelect([['one', '이 영상만'], ['all', `모든 영상 (${fileQueue.length}개)`]], auto.scope, v => { auto.scope = v; }) });
   } else auto.scope = 'one';
   parts.push({ text: '스캔 배속' });
   parts.push({ node: makeSelect([[2, '2x (정확)'], [3, '3x (권장)'], [4, '4x (빠름)']], auto.rate, v => { auto.rate = parseFloat(v); }) });
-  parts.push({ btn: '▶ 탐지 시작', cls: 'primary', fn: () => runAuto() });
-  parts.push({ btn: '다시 지정', fn: () => beginPick() });
+  parts.push({ btn: clipsMode ? '▶ 편집점 찾기 시작' : '▶ 탐지 시작', cls: 'primary', fn: () => runAuto() });
+  if (!clipsMode) parts.push({ btn: '다시 지정', fn: () => beginPick() });
   parts.push({ btn: '취소', fn: () => hideBar() });
   parts.push({ text: '※ 탐지 중에는 이 탭을 보이는 상태로 두세요. 이 영상의 기존 자동 결과는 교체되고 직접 찍은 마커는 유지돼요.' });
   setBar(parts);
 }
 
+// ── 탐지 중 미리보기 (영상이 움직이고 슛 개수가 올라가는 것을 볼 수 있음) ──
+const lvBox = document.getElementById('live-box'), lvWrap = document.getElementById('lv-wrap'), lvInfo = document.getElementById('lv-info'), lvTitle = document.getElementById('lv-title');
+const lvRoi = document.getElementById('lv-roi'), lvRim = document.getElementById('lv-rim');
+document.getElementById('lv-min').addEventListener('click', e => { lvBox.classList.toggle('min'); e.currentTarget.textContent = lvBox.classList.contains('min') ? '▸' : '▾'; e.currentTarget.blur(); });
+function liveOpen(title, sv) {
+  lvWrap.querySelectorAll('video').forEach(v => v.remove());
+  sv.style.cssText = 'width:100%;display:block';
+  lvWrap.insertBefore(sv, lvWrap.firstChild);
+  lvTitle.textContent = title; lvInfo.textContent = '';
+  lvRoi.style.display = 'none'; lvRim.style.display = 'none';
+  lvBox.classList.add('on');
+}
+function liveClose() { lvBox.classList.remove('on'); lvWrap.querySelectorAll('video').forEach(v => v.remove()); }
+function liveInfo(html) { lvInfo.innerHTML = html; }
+// 분석 영역(노란 점선)과 지정한 림 위치(파란 원)를 미리보기 위에 표시
+function liveHoop(hoop, vw, vh) {
+  if (!hoop) { lvRoi.style.display = 'none'; lvRim.style.display = 'none'; return; }
+  const s = AD.RIM_W / (hoop.w * vw);
+  lvRoi.style.cssText = `display:block;left:${(hoop.x * vw - AD.RIM_X / s) / vw * 100}%;top:${(hoop.y * vh - AD.RIM_Y / s) / vh * 100}%;width:${AD.CAN_W / s / vw * 100}%;height:${AD.CAN_H / s / vh * 100}%`;
+  lvRim.style.cssText = `display:block;left:${hoop.x * 100}%;top:${hoop.y * 100}%`;
+}
+// 지금까지 탐지된 슛 개수를 실시간으로 세기 (끝난 슛은 확정하고 버려서 가볍게 유지)
+function makeLiveCounter() {
+  let buf = [], fin = { shots: 0, cand: 0 };
+  return {
+    add(s) { buf.push(s); },
+    snap(curT) {
+      const shots = analyzeShots(buf);
+      let k = 0;
+      while (k < shots.length && shots[k].tLast < curT - (AD.CLUSTER_GAP + AD.BELOW_WIN + 0.5)) k++;
+      if (k) {
+        for (let i = 0; i < k; i++) { fin.shots++; if (shots[i].cand) fin.cand++; }
+        const cut = shots[k - 1].tEnd + 0.001;
+        buf = buf.filter(s => s.t > cut);
+      }
+      const pend = shots.slice(k);
+      return { shots: fin.shots + pend.length, cand: fin.cand + pend.filter(s => s.cand).length };
+    }
+  };
+}
+
 // ── 한 영상 스캔 ──
-function scanOne(idx, hoop, rate, onProg) {
+// opts.segs: [{t0,t1,hoop}] 구간별 골대 (없으면 영상 전체를 hoop 한 곳으로)
+// 결과: { ok, err, segs:[{t0,t1,samples}], samples(전체), duration, medStep }
+function scanOne(idx, hoop, rate, onProg, opts) {
+  opts = opts || {};
   return new Promise(resolve => {
     const file = fileQueue[idx], vd = videoData[idx];
     const sv = document.createElement('video');
     sv.muted = true; sv.playsInline = true; sv.preload = 'auto';
-    sv.style.cssText = 'position:fixed;right:0;bottom:0;width:4px;height:4px;opacity:.02;pointer-events:none;z-index:-1';
     const url = URL.createObjectURL(file);
-    document.body.appendChild(sv);
-    const samples = [], steps = [];
-    let done = false, dur = 0, lastCb = performance.now(), prevT = null, watchdog = null;
-    const onVis = () => { if (done) return; if (document.hidden) sv.pause(); else sv.play().catch(() => {}); };
+    liveOpen(opts.title || '🤖 탐지 중', sv);
+    const segOut = [], steps = [];
+    let done = false, dur = 0, lastCb = performance.now(), prevT = null, watchdog = null, lastLive = 0;
+    const onVis = () => { if (done) return; if (document.hidden) sv.pause(); else if (segResolve) sv.play().catch(() => {}); };
+    let segResolve = null, segEnd = 0;
     document.addEventListener('visibilitychange', onVis);
     const finish = (ok, err) => {
       if (done) return; done = true;
@@ -1799,62 +1881,58 @@ function scanOne(idx, hoop, rate, onProg) {
       document.removeEventListener('visibilitychange', onVis);
       try { sv.pause(); } catch (e) {}
       sv.removeAttribute('src'); try { sv.load(); } catch (e) {}
-      sv.remove(); try { URL.revokeObjectURL(url); } catch (e) {}
+      liveClose(); try { URL.revokeObjectURL(url); } catch (e) {}
       const st = steps.slice().sort((a, b) => a - b);
-      resolve({ ok, err, samples, duration: dur, medStep: st.length ? st[st.length >> 1] : 0 });
+      resolve({ ok, err, segs: segOut, samples: [].concat(...segOut.map(g => g.samples)), duration: dur, medStep: st.length ? st[st.length >> 1] : 0 });
     };
+    const endSeg = () => { if (segResolve) { const r = segResolve; segResolve = null; r(); } };
     sv.onerror = () => finish(false, '영상을 열 수 없어요');
-    sv.onended = () => finish(true);
+    sv.onended = () => { if (segResolve) endSeg(); else finish(true); };
     sv.onloadedmetadata = async () => {
       try {
         dur = sv.duration; vd.duration = vd.duration || dur;
         const vw = sv.videoWidth, vh = sv.videoHeight;
         if (!vw || !vh) { finish(false, '영상 크기를 알 수 없어요'); return; }
+        const segs = (opts.segs && opts.segs.length) ? opts.segs : [{ t0: 0, t1: dur, hoop }];
         const W = AD.CAN_W, H = AD.CAN_H;
         const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
         const ctx = cv.getContext('2d', { willReadFrequently: true });
-        const rx = hoop.x * vw, ry = hoop.y * vh, rw = hoop.w * vw;
-        const s = AD.RIM_W / rw;                       // 원본 1px → 캔버스 s px
-        const sx = rx - AD.RIM_X / s, sy = ry - AD.RIM_Y / s, sw = W / s, sh = H / s;
-        const grab = () => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.drawImage(sv, sx, sy, sw, sh, 0, 0, W, H); return ctx.getImageData(0, 0, W, H).data; };
+        const G = {};   // 현재 구간의 골대 기하
+        const setGeom = h => {
+          const rx = h.x * vw, ry = h.y * vh, rw = h.w * vw;
+          G.s = AD.RIM_W / rw; G.sx = rx - AD.RIM_X / G.s; G.sy = ry - AD.RIM_Y / G.s; G.sw = W / G.s; G.sh = H / G.s;
+        };
+        const grab = () => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.drawImage(sv, G.sx, G.sy, G.sw, G.sh, 0, 0, W, H); return ctx.getImageData(0, 0, W, H).data; };
         const isOrange = (r, g, b) => r > 110 && (r - b) > 55 && (r - g) > 25 && (r - g) < 110 && (g - b) >= 0 && (g - b) < 70;
-
-        // 1) 움직이지 않는 주황색(림, 바닥의 공 등)을 찾아서 제외
-        const K = 24, cnt = new Uint16Array(W * H);
-        for (let k = 0; k < K && !done; k++) {
-          const target = dur * (k + 0.5) / K;
-          await new Promise(res => { let t = setTimeout(res, 4000); sv.onseeked = () => { clearTimeout(t); res(); }; sv.currentTime = target; });
-          const d = grab();
-          for (let i = 0, p = 0; i < W * H; i++, p += 4) if (isOrange(d[p], d[p + 1], d[p + 2])) cnt[i]++;
-          onProg(0, 'static');
-        }
-        if (done) return;
-        sv.onseeked = null;
-        const base = new Uint8Array(W * H);
-        for (let i = 0; i < W * H; i++) if (cnt[i] > K * 0.25) base[i] = 1;
-        const tmp = new Uint8Array(W * H), stat = new Uint8Array(W * H), R = 3;   // 3px 확장
-        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0; for (let dx = -R; dx <= R && !v; dx++) { const xx = x + dx; if (xx >= 0 && xx < W && base[y * W + xx]) v = 1; } tmp[y * W + x] = v; }
-        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0; for (let dy = -R; dy <= R && !v; dy++) { const yy = y + dy; if (yy >= 0 && yy < H && tmp[yy * W + x]) v = 1; } stat[y * W + x] = v; }
-
-        // 2) 빠르게 재생하면서 프레임마다 주황색(공) 위치를 기록
+        const seekTo = t => new Promise(res => { const to = setTimeout(res, 4000); sv.onseeked = () => { clearTimeout(to); res(); }; sv.currentTime = t; });
+        let stat = null, curSamples = null, lc = null;
+        const tot = { shots: 0, cand: 0 };
         const sample = t => {
           const d = grab();
           let n = 0, sxx = 0, syy = 0;
           for (let i = 0, p = 0; i < W * H; i++, p += 4) {
             if (!stat[i] && isOrange(d[p], d[p + 1], d[p + 2])) { n++; sxx += i % W; syy += (i / W) | 0; }
           }
-          if (n >= 20) samples.push({ t, n, x: sxx / n - AD.RIM_X, y: syy / n - AD.RIM_Y });
+          if (n >= 20) { const s = { t, n, x: sxx / n - AD.RIM_X, y: syy / n - AD.RIM_Y }; curSamples.push(s); lc.add(s); }
         };
         // 영상 FPS도 함께 측정 (처음 잠깐 1배속)
-        const fpsS = []; let lastF = null, fpsDone = false, calls = 0;
+        const fpsS = []; let lastF = null, fpsDone = false, calls = 0, segNo = 0;
         const guess = () => file.name.toLowerCase().includes('30') ? 30 : 60;
         const applyFps = (f, isDef) => {
           if (!vd.fpsOk || (vd.fpsDefault && !isDef)) { vd.fps = f; vd.fpsOk = true; vd.fpsDefault = isDef; if (idx === currentIdx) showFps(vd); }
+        };
+        const showLive = t => {
+          const c = lc.snap(t);
+          let h = `⏱ <b>${fmtSec(t)}</b> / ${fmtSec(dur)}<br>슛 <b>${tot.shots + c.shots}</b> · 성공 후보 <b style="color:var(--made)">${tot.cand + c.cand}</b> · 실패 <b style="color:var(--missed)">${tot.shots + c.shots - tot.cand - c.cand}</b>`;
+          if (segs.length > 1) h += `<br>구간 ${segNo}/${segs.length}`;
+          if (opts.liveExtra) { const x = opts.liveExtra(t); if (x) h += '<br>' + x; }
+          liveInfo(h);
         };
         const cb = (now, md) => {
           if (done) return;
           lastCb = performance.now();
           const t = md && typeof md.mediaTime === 'number' ? md.mediaTime : sv.currentTime;
+          if (t >= segEnd - 0.02) { endSeg(); return; }
           if (prevT !== null && t > prevT) steps.push(t - prevT);
           prevT = t;
           sample(t);
@@ -1871,16 +1949,49 @@ function scanOne(idx, hoop, rate, onProg) {
             else if (calls >= 150) { fpsDone = true; applyFps(guess(), true); sv.playbackRate = rate; }
           }
           onProg(dur ? t / dur : 0, 'scan');
+          if (performance.now() - lastLive > 1000) { lastLive = performance.now(); showLive(t); }
           sv.requestVideoFrameCallback(cb);
         };
         if (!('requestVideoFrameCallback' in sv)) { finish(false, '이 브라우저는 지원하지 않아요 (크롬 권장)'); return; }
-        sv.currentTime = 0;
-        sv.playbackRate = 1;
-        sv.requestVideoFrameCallback(cb);
-        await sv.play();
         watchdog = setInterval(() => {
-          if (!done && !document.hidden && !sv.paused && performance.now() - lastCb > 20000) finish(false, '진행이 멈췄어요');
+          if (!done && !document.hidden && segResolve && !sv.paused && performance.now() - lastCb > 20000) finish(false, '진행이 멈췄어요');
         }, 2000);
+
+        for (let k = 0; k < segs.length && !done; k++) {
+          const sg = segs[k];
+          if (!(sg.t1 - sg.t0 >= 0.8) || !sg.hoop) continue;
+          segNo = k + 1;
+          setGeom(sg.hoop); liveHoop(sg.hoop, vw, vh);
+          // 1) 움직이지 않는 주황색(림, 바닥의 공 등)을 찾아서 제외
+          const K = segs.length === 1 ? 24 : Math.max(4, Math.min(16, Math.round((sg.t1 - sg.t0) / 3)));
+          const cnt = new Uint16Array(W * H);
+          for (let kk = 0; kk < K && !done; kk++) {
+            await seekTo(Math.min(sg.t1 - 0.05, sg.t0 + (sg.t1 - sg.t0) * (kk + 0.5) / K));
+            const d = grab();
+            for (let i = 0, p = 0; i < W * H; i++, p += 4) if (isOrange(d[p], d[p + 1], d[p + 2])) cnt[i]++;
+            onProg(sg.t0 / dur, 'static');
+          }
+          if (done) return;
+          sv.onseeked = null;
+          const base = new Uint8Array(W * H);
+          const thr = segs.length === 1 ? K * 0.25 : Math.max(1, K * 0.25);
+          for (let i = 0; i < W * H; i++) if (cnt[i] > thr) base[i] = 1;
+          const tmp = new Uint8Array(W * H), R = 3;   // 3px 확장
+          stat = new Uint8Array(W * H);
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0; for (let dx = -R; dx <= R && !v; dx++) { const xx = x + dx; if (xx >= 0 && xx < W && base[y * W + xx]) v = 1; } tmp[y * W + x] = v; }
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0; for (let dy = -R; dy <= R && !v; dy++) { const yy = y + dy; if (yy >= 0 && yy < H && tmp[yy * W + x]) v = 1; } stat[y * W + x] = v; }
+          // 2) 빠르게 재생하면서 프레임마다 주황색(공) 위치를 기록
+          curSamples = []; lc = makeLiveCounter();
+          segOut.push({ t0: sg.t0, t1: sg.t1, samples: curSamples });
+          segEnd = sg.t1; prevT = null;
+          await seekTo(sg.t0); sv.onseeked = null;
+          if (!fpsDone) sv.playbackRate = 1;
+          await new Promise(res => { segResolve = res; sv.requestVideoFrameCallback(cb); sv.play().catch(() => {}); });
+          sv.pause();
+          const c = lc.snap(Infinity); tot.shots += c.shots; tot.cand += c.cand; lc = makeLiveCounter();
+          showLive(segEnd);
+        }
+        finish(true);
       } catch (e) { finish(false, String(e && e.message || e)); }
     };
     auto._abortFns = auto._abortFns || [];
@@ -1888,15 +1999,246 @@ function scanOne(idx, hoop, rate, onProg) {
     sv.src = url;
   });
 }
+// 스캔 결과 → 슛 목록 (구간별로 따로 분석)
+function shotsFromScan(res) { return [].concat(...res.segs.map(g => analyzeShots(g.samples))); }
+
+// ==========================================
+// 🎬 구간별 골대 — 편집점을 찾아 클립으로 나누고, 같은 장면끼리 묶어 골대를 한 번씩만 지정
+// ==========================================
+const CUT = { T: 7, K: 6, MIN_LEN: 1.2, GROUP: 14, RATE: 8, IMG_W: 1280, CAP_AT: 0.7 };
+function mem(vd) { if (!vd._mem) Object.defineProperty(vd, '_mem', { value: {}, enumerable: false, writable: true }); return vd._mem; }
+function sigDiff(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; }
+
+// 영상을 빠르게 훑으며 화면이 확 바뀌는 지점(편집점)을 찾음
+function findClips(idx, onProg) {
+  return new Promise(resolve => {
+    const file = fileQueue[idx];
+    const sv = document.createElement('video');
+    sv.muted = true; sv.playsInline = true; sv.preload = 'auto';
+    const url = URL.createObjectURL(file);
+    liveOpen('🎬 편집점 찾는 중', sv); liveHoop(null);
+    const tc = document.createElement('canvas'); tc.width = 32; tc.height = 18;
+    const tx = tc.getContext('2d', { willReadFrequently: true });
+    const bc = document.createElement('canvas');
+    const clips = [{ t0: 0, t1: 0, img: null, sig: null }];
+    const recent = [];
+    let cur = clips[0], prev = null, lastCut = -99, done = false, dur = 0, lastCb = performance.now(), wd = null, lastT = 0, vw = 0, vh = 0;
+    const gray = () => {
+      tx.drawImage(sv, 0, 0, 32, 18);
+      const d = tx.getImageData(0, 0, 32, 18).data, g = new Uint8Array(576);
+      for (let i = 0, p = 0; i < 576; i++, p += 4) g[i] = (d[p] * 77 + d[p + 1] * 150 + d[p + 2] * 29) >> 8;
+      return g;
+    };
+    const capture = g => {
+      bc.width = CUT.IMG_W; bc.height = Math.round(CUT.IMG_W * vh / vw);
+      bc.getContext('2d').drawImage(sv, 0, 0, bc.width, bc.height);
+      cur.img = bc.toDataURL('image/jpeg', 0.85); cur.sig = g;
+    };
+    const finish = (ok, err) => {
+      if (done) return; done = true; clearInterval(wd);
+      try { sv.pause(); } catch (e) {}
+      sv.removeAttribute('src'); try { sv.load(); } catch (e) {}
+      liveClose(); try { URL.revokeObjectURL(url); } catch (e) {}
+      clips[clips.length - 1].t1 = dur || lastT;
+      const keep = clips.filter(c => c.t1 - c.t0 >= 0.5 && c.sig);
+      resolve({ ok, err, clips: keep });
+    };
+    sv.onerror = () => finish(false, '영상을 열 수 없어요');
+    sv.onended = () => finish(true);
+    sv.onloadedmetadata = async () => {
+      dur = sv.duration; vw = sv.videoWidth; vh = sv.videoHeight;
+      if (!vw || !vh || !('requestVideoFrameCallback' in sv)) { finish(false, '이 브라우저는 지원하지 않아요 (크롬 권장)'); return; }
+      const cb = (now, md) => {
+        if (done) return;
+        lastCb = performance.now();
+        const t = md && typeof md.mediaTime === 'number' ? md.mediaTime : sv.currentTime;
+        lastT = t;
+        const g = gray();
+        if (prev) {
+          const d = sigDiff(prev, g);
+          // 평소 프레임 간 변화(움직임)의 6배 이상 확 바뀌면 편집점 (최소 7)
+          const sorted = recent.slice().sort((a, b) => a - b), med = sorted.length ? sorted[sorted.length >> 1] : 0;
+          if (t - lastCut > CUT.MIN_LEN && d > Math.max(CUT.T, CUT.K * med)) {
+            cur.t1 = t; cur = { t0: t, t1: 0, img: null, sig: null }; clips.push(cur); lastCut = t; recent.length = 0;
+          } else { recent.push(d); if (recent.length > 40) recent.shift(); }
+        }
+        prev = g;
+        if (!cur.sig && t >= cur.t0 + CUT.CAP_AT) capture(g);
+        onProg(dur ? t / dur : 0, 'clips');
+        if (performance.now() - lastLiveC > 1000) { lastLiveC = performance.now(); liveInfo(`⏱ <b>${fmtSec(t)}</b> / ${fmtSec(dur)}<br>편집점 <b>${clips.length - 1}</b>개 발견`); }
+        sv.requestVideoFrameCallback(cb);
+      };
+      let lastLiveC = 0;
+      sv.playbackRate = CUT.RATE;
+      sv.requestVideoFrameCallback(cb);
+      await sv.play().catch(() => {});
+      wd = setInterval(() => { if (!done && !document.hidden && !sv.paused && performance.now() - lastCb > 20000) finish(false, '진행이 멈췄어요'); }, 2000);
+    };
+    auto._abortFns = auto._abortFns || [];
+    auto._abortFns.push(() => finish(false, 'abort'));
+    sv.src = url;
+  });
+}
+
+// 같은 장면(카메라 위치)끼리 묶기
+function groupClips(clips) {
+  const groups = [];
+  clips.forEach(c => {
+    let gi = -1;
+    for (let k = 0; k < groups.length; k++) if (sigDiff(groups[k].sig, c.sig) < CUT.GROUP) { gi = k; break; }
+    if (gi < 0) { groups.push({ sig: c.sig, img: c.img, hoop: null, pts: [] }); gi = groups.length - 1; }
+    c.g = gi;
+  });
+  return groups;
+}
+// 클립/그룹을 영상 데이터에 저장 (이미지는 메모리에만, 위치 정보는 세션에 저장)
+function storeClips(vd, clips, groups) {
+  vd.clips = clips.map(c => ({ t0: c.t0, t1: c.t1, g: c.g }));
+  vd.hoops = groups.map(g => g.hoop || null);
+  const m = mem(vd); m.clips = clips; m.groups = groups;
+}
+function segsFromClips(vd) {
+  const hs = vd.hoops || [];
+  return (vd.clips || []).filter(c => hs[c.g]).map(c => ({ t0: c.t0, t1: c.t1, hoop: hs[c.g] }));
+}
+
+// ── 구간별 골대 지정 화면 ──
+const cpPanel = document.getElementById('clip-panel'), cpBox = document.getElementById('cp-box'), cpLoupe = document.getElementById('cp-loupe');
+let cpState = null;
+function cpClose(result) {
+  cpPanel.classList.remove('open'); cpLoupe.style.display = 'none';
+  const st = cpState; cpState = null;
+  if (st) st.resolve(result);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && cpPanel.classList.contains('open')) cpClose(null); });
+cpPanel.addEventListener('mousedown', e => { if (e.target === cpPanel) cpClose(null); });
+
+function openClipPanel(idx) {
+  return new Promise(resolve => {
+    const vd = videoData[idx], m = mem(vd);
+    if (!m.groups && vd.clips && vd.clips.length) {          // 세션에서 복구된 경우: 이미지 없이 위치만
+      const n = Math.max(...vd.clips.map(c => c.g)) + 1;
+      m.groups = Array.from({ length: n }, (_, i) => ({ sig: null, img: null, hoop: (vd.hoops || [])[i] || null, pts: [] }));
+      m.clips = vd.clips.map(c => ({ ...c }));
+    }
+    cpState = { idx, resolve };
+    cpPanel.classList.add('open');
+    renderClipPanel();
+  });
+}
+function cpDraw(i) {
+  const st = cpState; if (!st) return;
+  const g = mem(videoData[st.idx]).groups[i], cv = cpBox.querySelector(`canvas[data-g="${i}"]`);
+  if (!cv || !g.imgEl || !g.imgEl.complete) return;
+  cv.width = g.imgEl.naturalWidth; cv.height = g.imgEl.naturalHeight;
+  const c = cv.getContext('2d'); c.drawImage(g.imgEl, 0, 0);
+  const pts = g.pts.length ? g.pts : (g.hoop ? [{ fx: g.hoop.x - g.hoop.w / 2, fy: g.hoop.y }, { fx: g.hoop.x + g.hoop.w / 2, fy: g.hoop.y }] : []);
+  pts.forEach(p => { c.beginPath(); c.arc(p.fx * cv.width, p.fy * cv.height, 5, 0, 7); c.fillStyle = '#ffd24a'; c.fill(); c.strokeStyle = '#000'; c.lineWidth = 2; c.stroke(); });
+}
+function renderClipPanel() {
+  const st = cpState; if (!st) return;
+  const vd = videoData[st.idx], m = mem(vd), groups = m.groups, clips = m.clips;
+  const vw = video.videoWidth || 1920, scroll = cpBox.scrollTop;
+  const assigned = groups.filter(g => g.hoop).length;
+  let h = `<div class="sp-title">🎬 구간별 골대 지정</div>
+    <div class="vp-note">영상을 <b>${clips.length}개 클립</b>으로 나누고, 같은 장면끼리 <b>${groups.length}개 그룹</b>으로 묶었어요. 그룹마다 사진에서 <b>림(골대 링)의 왼쪽 끝 → 오른쪽 끝</b>을 클릭해 주세요. (마우스를 올리면 확대돼요) 그룹이 잘못 묶였으면 "클립별로 나누기"를 쓰세요.</div>`;
+  groups.forEach((g, i) => {
+    const mine = clips.map((c, k) => ({ c, k })).filter(o => o.c.g === i);
+    const spans = mine.slice(0, 8).map(o => fmtSec(o.c.t0) + '–' + fmtSec(o.c.t1)).join(' · ') + (mine.length > 8 ? ` … 외 ${mine.length - 8}개` : '');
+    const total = mine.reduce((s, o) => s + (o.c.t1 - o.c.t0), 0);
+    h += `<div class="cp-g"><div class="sp-sec-title">그룹 ${i + 1} · 클립 ${mine.length}개 (합계 ${fmtSec(total)}) · ${g.hoop ? '<span style="color:var(--made)">✅ 림 폭 약 ' + Math.round(g.hoop.w * vw) + 'px</span>' : '<span style="color:var(--accent)">⚠ 림 양끝을 클릭하세요</span>'}</div>
+      <div class="vp-note">${spans}</div>
+      ${g.img ? `<canvas class="cp-cv" data-g="${i}"></canvas>` : '<div class="vp-note">미리보기 이미지가 없어요 — "구간 다시 분석"을 눌러 주세요 (저장된 골대 위치는 그대로 쓸 수 있어요)</div>'}
+      <div class="sp-footer" style="justify-content:flex-start;gap:8px">
+        <button class="sp-btn cp-redo" data-g="${i}" style="padding:3px 10px;font-size:.7rem">다시 찍기</button>
+        ${loadLastHoop() ? `<button class="sp-btn cp-last" data-g="${i}" style="padding:3px 10px;font-size:.7rem">이전 골대 위치 사용</button>` : ''}
+        ${mine.length > 1 ? `<button class="sp-btn cp-split" data-g="${i}" style="padding:3px 10px;font-size:.7rem">클립별로 나누기</button>` : ''}
+      </div></div>`;
+  });
+  h += `<div class="sp-footer">
+      <button class="sp-btn" id="cp-re">🔄 구간 다시 분석</button>
+      <button class="sp-btn" id="cp-cancel">취소</button>
+      <button class="sp-btn primary" id="cp-go"${assigned ? '' : ' disabled'}>▶ 탐지 시작 (${assigned}/${groups.length}그룹 지정됨)</button></div>`;
+  if (assigned && assigned < groups.length) h += `<div class="vp-note" style="color:var(--accent)">골대를 지정하지 않은 그룹의 구간은 탐지에서 건너뜁니다.</div>`;
+  cpBox.innerHTML = h;
+  groups.forEach((g, i) => {
+    if (!g.img) return;
+    if (!g.imgEl) { g.imgEl = new Image(); g.imgEl.onload = () => cpDraw(i); g.imgEl.src = g.img; } else cpDraw(i);
+  });
+  cpBox.scrollTop = scroll;
+  const q = s => cpBox.querySelectorAll(s);
+  q('.cp-cv').forEach(cv => {
+    const i = +cv.dataset.g, g = groups[i];
+    const pos = e => { const r = cv.getBoundingClientRect(); return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height }; };
+    cv.onmousemove = e => {
+      const { fx, fy } = pos(e), c = cpLoupe.getContext('2d'), sw = 40;
+      c.fillStyle = '#000'; c.fillRect(0, 0, 192, 192);
+      c.drawImage(g.imgEl, fx * cv.width - sw / 2, fy * cv.height - sw / 2, sw, sw, 0, 0, 192, 192);
+      c.strokeStyle = '#4af'; c.lineWidth = 1; c.beginPath(); c.moveTo(96, 0); c.lineTo(96, 192); c.moveTo(0, 96); c.lineTo(192, 96); c.stroke();
+      cpLoupe.style.display = 'block';
+      cpLoupe.style.left = Math.min(innerWidth - 200, e.clientX + 24) + 'px'; cpLoupe.style.top = Math.max(8, Math.min(innerHeight - 200, e.clientY - 96)) + 'px';
+    };
+    cv.onmouseleave = () => { cpLoupe.style.display = 'none'; };
+    cv.onclick = e => {
+      const p = pos(e);
+      if (g.pts.length >= 2 || g.hoop && !g.pts.length) { g.pts = []; g.hoop = null; }
+      g.pts.push(p);
+      if (g.pts.length === 2) {
+        const nw = cv.width, nh = cv.height, a = g.pts[0], b = g.pts[1];
+        const wpx = Math.hypot((b.fx - a.fx) * vw, (b.fy - a.fy) * vw * nh / nw);
+        if (wpx < 12) { flash('너무 가까워요. 림 양쪽 끝을 눌러 주세요', '#f88'); g.pts = []; cpDraw(i); return; }
+        g.hoop = { x: (a.fx + b.fx) / 2, y: (a.fy + b.fy) / 2, w: wpx / vw };
+        g.pts = [];
+        vd.hoops = groups.map(x => x.hoop || null); lsSet('bm_hoop', JSON.stringify(g.hoop)); saveSession();
+        renderClipPanel();
+      } else cpDraw(i);
+    };
+  });
+  q('.cp-redo').forEach(b => b.onclick = () => { const g = groups[+b.dataset.g]; g.hoop = null; g.pts = []; vd.hoops = groups.map(x => x.hoop || null); renderClipPanel(); });
+  q('.cp-last').forEach(b => b.onclick = () => { groups[+b.dataset.g].hoop = loadLastHoop(); vd.hoops = groups.map(x => x.hoop || null); saveSession(); renderClipPanel(); });
+  q('.cp-split').forEach(b => b.onclick = () => {
+    const gi = +b.dataset.g, mine = clips.filter(c => c.g === gi);
+    mine.slice(1).forEach(c => { groups.push({ sig: c.sig, img: c.img || groups[gi].img, hoop: groups[gi].hoop, pts: [] }); c.g = groups.length - 1; });
+    vd.clips = clips.map(c => ({ t0: c.t0, t1: c.t1, g: c.g })); vd.hoops = groups.map(x => x.hoop || null); saveSession();
+    renderClipPanel();
+  });
+  document.getElementById('cp-cancel').onclick = () => cpClose(null);
+  document.getElementById('cp-re').onclick = () => cpClose('redo');
+  document.getElementById('cp-go').onclick = () => {
+    vd.clips = clips.map(c => ({ t0: c.t0, t1: c.t1, g: c.g })); vd.hoops = groups.map(x => x.hoop || null); saveSession();
+    cpClose(segsFromClips(vd));
+  };
+}
+
+// 구간 준비: (필요하면 편집점 찾기) → 골대 지정 화면 → 구간 목록 반환 (취소면 null)
+async function prepareSegs(idx, forceFind, onProg) {
+  const vd = videoData[idx];
+  for (;;) {
+    if (forceFind || !(vd.clips && vd.clips.length)) {
+      const res = await findClips(idx, onProg);
+      if (auto.abort) return null;
+      if (!res.ok || !res.clips.length) { flash('⚠ ' + (res.err || '편집점을 찾지 못했어요'), '#f88'); return null; }
+      const groups = groupClips(res.clips);
+      // 이전에 같은 구간 개수로 지정한 골대가 있으면 이어서 사용
+      storeClips(vd, res.clips, groups); saveSession();
+      forceFind = false;
+    }
+    const r = await openClipPanel(idx);
+    if (r === 'redo') { forceFind = true; vd.hoops = []; mem(vd).groups = null; continue; }
+    return r;   // 구간 목록 또는 null
+  }
+}
+
 
 // ── 전체 실행 ──
 async function runAuto() {
-  if (auto.busy || !auto.hoop) return;
+  const clipsMode = auto.hoopMode === 'clips';
+  if (auto.busy || (!clipsMode && !auto.hoop)) return;
   auto.busy = true; auto.abort = false; auto._abortFns = [];
   video.pause();
-  const hoop = auto.hoop;
-  lsSet('bm_hoop', JSON.stringify(hoop));
-  const targets = auto.scope === 'all' ? fileQueue.map((_, i) => i) : [currentIdx];
+  const hoop = clipsMode ? null : auto.hoop;
+  if (hoop) lsSet('bm_hoop', JSON.stringify(hoop));
+  const targets = (auto.scope === 'all' && !clipsMode) ? fileQueue.map((_, i) => i) : [currentIdx];
   let tShots = 0, tCand = 0, tMiss = 0, warn = '';
   const t0 = performance.now();
   for (let k = 0; k < targets.length; k++) {
@@ -1908,21 +2250,28 @@ async function runAuto() {
     setBar([{ node: txt }, { node: bar }, { btn: '중지', cls: 'bad', fn: () => { auto.abort = true; (auto._abortFns || []).forEach(f => f()); } }]);
     const label = `🤖 ${targets.length > 1 ? `영상 ${k + 1}/${targets.length} · ` : ''}`;
     txt.textContent = label + '준비 중...';
+    let segs = null;
+    if (clipsMode) {
+      segs = await prepareSegs(idx, false, (p) => { fill.style.width = Math.round(p * 100) + '%'; txt.textContent = `🎬 편집점 찾는 중 ${Math.round(p * 100)}%`; });
+      if (auto.abort || !segs) { auto.busy = false; auto.abort = false; auto._abortFns = []; hideBar(); flash(segs ? '중지했어요' : '구간별 탐지를 취소했어요', '#888'); return; }
+      if (!segs.length) { auto.busy = false; hideBar(); flash('골대를 지정한 구간이 없어요', '#f88'); return; }
+      setBar([{ node: txt }, { node: bar }, { btn: '중지', cls: 'bad', fn: () => { auto.abort = true; (auto._abortFns || []).forEach(f => f()); } }]);
+    }
     const res = await scanOne(idx, hoop, auto.rate, (p, phase) => {
-      fill.style.width = (phase === 'static' ? 0 : Math.round(p * 100)) + '%';
+      fill.style.width = Math.round(p * 100) + '%';
       if (phase === 'static') txt.textContent = label + '배경 분석 중...';
       else {
         const dur = videoData[idx].duration || 0;
         const remain = dur ? Math.max(0, dur * (1 - p) / auto.rate) : 0;
         txt.textContent = `${label}탐지 중 ${Math.round(p * 100)}%  (남은 시간 약 ${remain >= 90 ? Math.round(remain / 60) + '분' : Math.round(remain) + '초'})`;
       }
-    });
+    }, { segs, title: '🤖 자동 탐지 중' });
     if (auto.abort) break;
     if (!res.ok) { warn = `⚠ ${videoData[idx].fileName}: ${res.err}`; continue; }
     if (res.medStep > 0.12) warn = '⚠ 프레임이 많이 건너뛰어졌어요 — 스캔 배속을 낮춰 보세요';
-    const shots = analyzeShots(res.samples);
+    const shots = shotsFromScan(res);
     const r = applyAuto(idx, shots);
-    videoData[idx].hoop = hoop;
+    if (hoop) videoData[idx].hoop = hoop;
     tShots += r.total; tCand += r.cand; tMiss += r.miss;
   }
   auto.busy = false;
@@ -2073,7 +2422,7 @@ function handleAutoKey(e) {
 // 🧪 검증 탭 — 자동 탐지 결과를 내 기록과 비교하고, 작은 결과 파일(.json)로 저장
 //   (원본 영상을 보내지 않고 이 파일만 보내면 분석할 수 있어요)
 // ==========================================
-const ver = { running:false, gtSrc:'markers', srtEvents:null, srtName:'', rate:2, result:null, truth:{}, msg:'', showAll:false };
+const ver = { running:false, hoopMode:'one', gtSrc:'markers', srtEvents:null, srtName:'', rate:2, result:null, truth:{}, msg:'', showAll:false };
 const verPanel = document.getElementById('verify-panel');
 const verBox   = document.getElementById('vp-box');
 document.getElementById('btn-verify').addEventListener('click', e => { e.currentTarget.blur(); openVerify(); });
@@ -2173,8 +2522,19 @@ function renderVerify() {
       <input type="file" id="vp-srt" accept=".srt,.txt" style="font-size:.72rem;color:var(--muted)"></div>`;
   }
   h += `<div class="sp-sec-title">2. 골대 위치</div>
-    <div class="sp-row"><div class="sp-label">${hoop ? '지정됨 (림 폭 약 ' + Math.round(hoop.w * (video.videoWidth || 1920)) + 'px)' : '아직 지정 안 됨'}</div>
-      <button class="sp-btn" id="vp-hoop" style="padding:3px 10px;font-size:.7rem">${hoop ? '다시 지정' : '골대 지정'}</button></div>
+    <div class="sp-row"><div class="sp-label">방식</div>
+      <select class="sp-num" id="vp-hm" style="width:auto">
+        <option value="one"${ver.hoopMode === 'one' ? ' selected' : ''}>한 곳 (영상 전체 같은 골대)</option>
+        <option value="clips"${ver.hoopMode === 'clips' ? ' selected' : ''}>구간별 (편집·이어붙인 영상)</option>
+      </select></div>`;
+  if (ver.hoopMode === 'clips') {
+    const nh = (vd.hoops || []).filter(Boolean).length;
+    h += `<div class="sp-row"><div class="sp-label">${vd.clips && vd.clips.length ? `이전 설정: 클립 ${vd.clips.length}개 · 그룹 ${(vd.hoops || []).length}개 중 ${nh}개 지정됨` : '실행하면 편집점을 찾고, 구간별 골대 지정 화면이 열려요'}</div></div>`;
+  } else {
+    h += `<div class="sp-row"><div class="sp-label">${hoop ? '지정됨 (림 폭 약 ' + Math.round(hoop.w * (video.videoWidth || 1920)) + 'px)' : '아직 지정 안 됨'}</div>
+      <button class="sp-btn" id="vp-hoop" style="padding:3px 10px;font-size:.7rem">${hoop ? '다시 지정' : '골대 지정'}</button></div>`;
+  }
+  h += `
     <div class="sp-sec-title">3. 탐지 실행</div>
     <div class="sp-row"><div class="sp-label">스캔 배속</div>
       <select class="sp-num" id="vp-rate" style="width:auto">
@@ -2225,7 +2585,8 @@ function renderVerify() {
     ver.msg = ver.srtEvents.length ? '' : '자막에서 성공/실패 변화를 찾지 못했어요 (점수판 _score.srt가 맞는지 확인해 주세요)';
     renderVerify();
   };
-  $('vp-hoop').onclick = () => { closeVerify(); auto.forVerify = true; beginPick(); auto.forVerify = true; };
+  $('vp-hm').onchange = e => { ver.hoopMode = e.target.value; renderVerify(); };
+  if ($('vp-hoop')) $('vp-hoop').onclick = () => { closeVerify(); auto.forVerify = true; beginPick(); auto.forVerify = true; };
   $('vp-rate').onchange = e => { ver.rate = parseFloat(e.target.value); };
   if ($('vp-run'))  $('vp-run').onclick  = runVerify;
   if ($('vp-stop')) $('vp-stop').onclick = () => { auto.abort = true; (auto._abortFns || []).forEach(f => f()); };
@@ -2243,26 +2604,33 @@ function renderVerify() {
 async function runVerify() {
   if (ver.running || auto.busy) return;
   const vd = videoData[currentIdx];
-  const hoop = vd.hoop || loadLastHoop();
-  if (!hoop) { ver.msg = '먼저 골대 위치를 지정해 주세요.'; renderVerify(); return; }
+  const clipsMode = ver.hoopMode === 'clips';
+  const hoop = clipsMode ? null : (vd.hoop || loadLastHoop());
+  if (!clipsMode && !hoop) { ver.msg = '먼저 골대 위치를 지정해 주세요.'; renderVerify(); return; }
   const gt = verGt();
   if (!gt.length) { ver.msg = ver.gtSrc === 'srt' ? '점수판 자막(.srt)을 먼저 불러와 주세요.' : '이 영상에 직접 찍은 마커가 없어요. 마킹을 하거나 점수판 자막을 불러오세요.'; renderVerify(); return; }
   ver.running = true; auto.busy = true; auto.abort = false; auto._abortFns = []; ver.progress = 0; ver.msg = ''; ver.truth = {};
   renderVerify();
   const idx = currentIdx;
-  const res = await scanOne(idx, hoop, ver.rate, (p, phase) => {
-    ver.progress = phase === 'static' ? 0 : p;
-    const el = document.getElementById('vp-prog'); if (el) el.style.width = Math.round(ver.progress * 100) + '%';
-  });
+  const setProg = p => { ver.progress = p; const el = document.getElementById('vp-prog'); if (el) el.style.width = Math.round(p * 100) + '%'; };
+  let segs = null, res = null;
+  if (clipsMode) {
+    segs = await prepareSegs(idx, false, setProg);
+    if (!segs || auto.abort) { ver.running = false; auto.busy = false; auto.abort = false; auto._abortFns = []; ver.msg = segs ? '중지했어요.' : '구간별 골대 지정을 취소했어요.'; if (verPanel.classList.contains('open')) renderVerify(); return; }
+    if (!segs.length) { ver.running = false; auto.busy = false; ver.msg = '골대를 지정한 구간이 없어요.'; renderVerify(); return; }
+  }
+  const gtCount = t => { let m = 0, f = 0; gt.forEach(g => { if (g.t <= t) { if (g.type === 'made') m++; else f++; } }); return `내 기록: 성공 <b>${m}</b> · 실패 <b>${f}</b> (총 ${m + f})`; };
+  res = await scanOne(idx, hoop, ver.rate, (p, phase) => setProg(phase === 'static' ? 0 : p), { segs, title: '🧪 검증 탐지 중', liveExtra: gtCount });
   ver.running = false; auto.busy = false;
   const aborted = auto.abort; auto.abort = false; auto._abortFns = [];
   if (aborted) { ver.msg = '중지했어요.'; }
   else if (!res.ok) { ver.msg = '⚠ ' + (res.err || '탐지 실패'); }
   else {
-    const shots = analyzeShots(res.samples);
+    const shots = shotsFromScan(res);
     const rows  = compareShots(shots, gt);
-    vd.hoop = hoop; saveSession();
-    ver.result = { videoName: vd.fileName, duration: vd.duration || res.duration, fps: vd.fps, hoop, rate: ver.rate, gtSrc: ver.gtSrc, gtN: gt.length, rows, shots, samples: res.samples, medStep: res.medStep };
+    if (hoop) vd.hoop = hoop;
+    saveSession();
+    ver.result = { videoName: vd.fileName, duration: vd.duration || res.duration, fps: vd.fps, hoop, hoops: clipsMode ? (vd.hoops || []) : null, clips: clipsMode ? (vd.clips || []) : null, rate: ver.rate, gtSrc: ver.gtSrc, gtN: gt.length, rows, shots, samples: res.samples, medStep: res.medStep };
     if (res.medStep > 0.12) ver.msg = '⚠ 프레임이 많이 건너뛰어졌어요 — 스캔 배속을 낮춰 보세요';
   }
   if (verPanel.classList.contains('open')) renderVerify();
@@ -2279,7 +2647,7 @@ function exportVerify() {
   const S = verSummary(R.rows, ver.truth);
   const out = {
     app: 'basketball_marker', kind: 'auto-detect-verify', createdAt: new Date().toISOString(),
-    video: { name: R.videoName, duration: R.duration, fps: R.fps }, hoop: R.hoop, scanRate: R.rate, medStep: R.medStep,
+    video: { name: R.videoName, duration: R.duration, fps: R.fps }, hoop: R.hoop, hoops: R.hoops, clips: R.clips, scanRate: R.rate, medStep: R.medStep,
     gtSource: R.gtSrc, gtCount: R.gtN,
     params: { ARR: AD.ARR, BELOW: AD.BELOW, CLUSTER_GAP: AD.CLUSTER_GAP, BELOW_WIN: AD.BELOW_WIN, MIN_BELOW_N: AD.MIN_BELOW_N },
     summary: S,
