@@ -359,6 +359,7 @@
     align-items:center; justify-content:center;
   }
   #verify-panel.open { display:flex; }
+  #verify-panel.scanning { backdrop-filter:none; background:rgba(8,8,16,.7); }   /* 탐지 중에는 블러를 꺼서 프레임 처리가 느려지지 않게 */
   .vp-note { font-size:.74rem; color:var(--muted); line-height:1.6; margin:6px 0; }
   .vp-note b { color:var(--text); }
   .vp-sum { display:flex; flex-wrap:wrap; gap:6px 16px; font-family:'IBM Plex Mono',monospace; font-size:.76rem; margin:8px 0; }
@@ -1644,8 +1645,10 @@ function saveEDL() {
     msg = `💾 저장완료 (파일 ${files.length}개)`;
   }
   if (usedDefault) msg += '  ⚠ FPS 기본값 사용';
-  const pendingReview = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.review).length, 0);
+  const pendingReview = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.review && m.type === 'made').length, 0);
+  const pendingWeak = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.review && m.weak).length, 0);
   if (pendingReview) msg += `  ⚠ 확인 안 한 후보 ${pendingReview}개(성공으로 저장됨)`;
+  if (pendingWeak) msg += `  ⚠ 슛 아닐 수도 있는 의심 ${pendingWeak}개 확인 안 함`;
   flash(msg, 'var(--accent)');
   console.log(`💾 저장 | 컷 성공:${totalMade} 컷 실패:${totalMissed} 점수판 성공:${scoreMade} 실패:${scoreMissed} 파일:${files.map(f=>f.name).join(', ')}`);
 }
@@ -1662,6 +1665,9 @@ const AD = {
   CLUSTER_GAP: 2.0,   // 이 시간(초) 안에 다시 들어온 공은 같은 슛
   BELOW_WIN:   1.5,   // 마지막 도착 뒤 이 시간 안의 하강 신호까지 인정
   MIN_BELOW_N: 1,     // 놓치는 성공이 없도록 느슨하게 (대신 후보가 늘어남)
+  NEAR_R: 70,         // 슛이 되려면 공이 림 중심에서 이 거리(림 폭 65 기준) 안까지 다가와야 함
+  MIN_DROP: 20,       // 그리고 위에서 아래로 이만큼 이상 내려오는 움직임이 있어야 함 (패스·드리블은 거의 수평/낮은 곳)
+  DROP_RATIO: 0.35,   // 내려간 양이 옆으로 움직인 양의 이 비율 이상 (패스처럼 옆으로 가는 공 제외)
   CAN_W: 340, CAN_H: 330, RIM_X: 170, RIM_Y: 110, RIM_W: 65,
   OUT_MADE_AFTER: 0.3,    // 성공: 공이 림 아래로 내려온 시각 + 이 값 = 마커 시각
   OUT_MISS_AFTER: 0.2,    // 실패: 공이 구역에서 마지막으로 보인 시각 + 이 값
@@ -1669,14 +1675,25 @@ const AD = {
 function adInZone(s, z) { return s.n >= z.minN && s.x >= z.x0 && s.x <= z.x1 && s.y >= z.y0 && s.y <= z.y1; }
 
 // 표본 [{t, n, x, y}] → 슛 목록 [{tEnter, tEnd, tBelow, nBelow, cand}]
+// 슛다운 움직임인가? 림 가까이 오고, 위에서 아래로 내려오는 구간이 있어야 함
+function adShotLike(pts) {
+  if (!pts.some(p => Math.hypot(p.x, p.y) <= AD.NEAR_R)) return false;
+  if (pts.length < 4) return true;      // 표본이 너무 적으면 움직임을 판단할 수 없으니 슛으로 인정
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    const dy = pts[j].y - pts[i].y;
+    if (dy >= AD.MIN_DROP && dy >= AD.DROP_RATIO * Math.abs(pts[j].x - pts[i].x)) return true;
+  }
+  return false;
+}
 function analyzeShots(samples) {
   const shots = [];
   samples.forEach(s => {
     if (!adInZone(s, AD.ARR)) return;
     const last = shots[shots.length - 1];
-    if (last && s.t - last.tLast <= AD.CLUSTER_GAP) last.tLast = s.t;
-    else shots.push({ tEnter: s.t, tLast: s.t });
+    if (last && s.t - last.tLast <= AD.CLUSTER_GAP) { last.tLast = s.t; last.pts.push(s); }
+    else shots.push({ tEnter: s.t, tLast: s.t, pts: [s] });
   });
+  shots.forEach(sh => { sh.weak = !adShotLike(sh.pts); });    // 패스·드리블처럼 보이는 움직임은 '의심'으로 표시 (버리지 않고 확인하게 함)
   shots.forEach((sh, k) => {
     const nextEnter = k + 1 < shots.length ? shots[k + 1].tEnter : Infinity;
     const a = sh.tEnter - 0.15, z = Math.min(sh.tLast + AD.BELOW_WIN, nextEnter - 0.05);
@@ -1842,7 +1859,7 @@ function liveHoop(hoop, vw, vh) {
 }
 // 지금까지 탐지된 슛 개수를 실시간으로 세기 (끝난 슛은 확정하고 버려서 가볍게 유지)
 function makeLiveCounter() {
-  let buf = [], fin = { shots: 0, cand: 0 }, times = [];
+  let buf = [], fin = { shots: 0, cand: 0, weak: 0 }, times = [];
   return {
     add(s) { buf.push(s); },
     snap(curT) {
@@ -1850,12 +1867,12 @@ function makeLiveCounter() {
       let k = 0;
       while (k < shots.length && shots[k].tLast < curT - (AD.CLUSTER_GAP + AD.BELOW_WIN + 0.5)) k++;
       if (k) {
-        for (let i = 0; i < k; i++) { fin.shots++; if (shots[i].cand) fin.cand++; times.push(shots[i].tEnter); }
+        for (let i = 0; i < k; i++) { fin.shots++; if (shots[i].cand) fin.cand++; if (shots[i].weak) fin.weak++; times.push(shots[i].tEnter); }
         const cut = shots[k - 1].tEnd + 0.001;
         buf = buf.filter(s => s.t > cut);
       }
       const pend = shots.slice(k);
-      return { shots: fin.shots + pend.length, cand: fin.cand + pend.filter(s => s.cand).length, last: times.concat(pend.map(x => x.tEnter)).slice(-4) };
+      return { shots: fin.shots + pend.length, cand: fin.cand + pend.filter(s => s.cand).length, weak: fin.weak + pend.filter(s => s.weak).length, last: times.concat(pend.map(x => x.tEnter)).slice(-4) };
     }
   };
 }
@@ -1907,7 +1924,7 @@ function scanOne(idx, hoop, rate, onProg, opts) {
         const isOrange = (r, g, b) => r > 110 && (r - b) > 55 && (r - g) > 25 && (r - g) < 110 && (g - b) >= 0 && (g - b) < 70;
         const seekTo = t => new Promise(res => { const to = setTimeout(res, 4000); sv.onseeked = () => { clearTimeout(to); res(); }; sv.currentTime = t; });
         let stat = null, curSamples = null, lc = null;
-        const tot = { shots: 0, cand: 0, last: [] };
+        const tot = { shots: 0, cand: 0, weak: 0, last: [] };
         const sample = t => {
           const d = grab();
           let n = 0, sxx = 0, syy = 0;
@@ -1930,7 +1947,7 @@ function scanOne(idx, hoop, rate, onProg, opts) {
         };
         const showLive = t => {
           const c = lc.snap(t);
-          let h = `⏱ <b>${fmtSec(t)}</b> / ${fmtSec(dur)}<br>슛 <b>${tot.shots + c.shots}</b> · 성공 후보 <b style="color:var(--made)">${tot.cand + c.cand}</b> · 실패 <b style="color:var(--missed)">${tot.shots + c.shots - tot.cand - c.cand}</b>`;
+          let h = `⏱ <b>${fmtSec(t)}</b> / ${fmtSec(dur)}<br>슛 <b>${tot.shots + c.shots}</b> · 성공 후보 <b style="color:var(--made)">${tot.cand + c.cand}</b> · 실패 <b style="color:var(--missed)">${tot.shots + c.shots - tot.cand - c.cand}</b>` + ((tot.weak + c.weak) ? ` · 의심 <b style="color:var(--accent)">${tot.weak + c.weak}</b>` : '');
           const lastS = tot.last.concat(c.last || []).slice(-4);
           if (lastS.length) h += `<br>최근 슛: ${lastS.map(fmtSec).join(' · ')}`;
           if (segs.length > 1) h += `<br>구간 ${segNo}/${segs.length}`;
@@ -1997,7 +2014,7 @@ function scanOne(idx, hoop, rate, onProg, opts) {
           if (!fpsDone) sv.playbackRate = 1;
           await new Promise(res => { segResolve = res; sv.requestVideoFrameCallback(cb); sv.play().catch(() => {}); });
           sv.pause();
-          const c = lc.snap(Infinity); tot.shots += c.shots; tot.cand += c.cand; tot.last = tot.last.concat(c.last || []).slice(-4); lc = makeLiveCounter();
+          const c = lc.snap(Infinity); tot.shots += c.shots; tot.cand += c.cand; tot.weak += c.weak; tot.last = tot.last.concat(c.last || []).slice(-4); lc = makeLiveCounter();
           showLive(segEnd);
         }
         finish(true);
@@ -2310,7 +2327,8 @@ function applyAuto(idx, shots) {
     if (keep.some(m => m.out >= lo && m.out <= hi)) return;   // 이미 직접 기록한 슛은 건너뜀
     let out = sh.cand ? sh.tBelow + AD.OUT_MADE_AFTER : sh.tEnd + AD.OUT_MISS_AFTER;
     if (vd.duration && out > vd.duration) out = vd.duration;
-    const mk = { type: sh.cand ? 'made' : 'missed', in: out, out, fileName: vd.fileName, auto: true, review: !!sh.cand };
+    const mk = { type: sh.cand ? 'made' : 'missed', in: out, out, fileName: vd.fileName, auto: true, review: !!(sh.cand || sh.weak) };
+    if (sh.weak) mk.weak = true;
     if (isSub) { mk.sub = true; mk.seq = ++seqCounter; }
     fresh.push(mk);
     if (sh.cand) cand++; else miss++;
@@ -2379,13 +2397,14 @@ function updateReviewBar() {
   if (!review.active) return;
   const it = review.list[review.k];
   setBar([
-    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})`, cls: 'ab-msg' },
+    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})${it.m.weak ? '  ⚠ 슛이 아닐 수도 있어요 (패스·드리블?)' : ''}`, cls: 'ab-msg' },
     { btn: '◀ 이전', fn: () => reviewGo(review.k - 1) },
     { btn: `${fmtKey(KEYS.made)} 성공 확정`, cls: 'ok', fn: () => reviewDecide(true) },
-    { btn: `${fmtKey(KEYS.missed)} 실패로 변경`, cls: 'bad', fn: () => reviewDecide(false) },
+    { btn: it.m.weak ? `${fmtKey(KEYS.missed)} 실패 슛 확정` : `${fmtKey(KEYS.missed)} 실패로 변경`, cls: 'bad', fn: () => reviewDecide(false) },
+    { btn: 'Del 슛 아님(삭제)', fn: () => reviewDelete() },
     { btn: '다음 ▶', fn: () => reviewGo(review.k + 1) },
     { btn: '종료', fn: () => endReview() },
-    { text: '← → 이동 · Esc 종료 · 공이 그물을 통과했는지 보고 결정하세요' },
+    { text: '← → 이동 · Esc 종료 · 공이 그물을 통과했는지 보고 결정하세요. 슛이 아니면 Delete' },
   ]);
 }
 function reviewDecide(isMade) {
@@ -2396,6 +2415,17 @@ function reviewDecide(isMade) {
   if (!isMade) { m.type = 'missed'; recomputeAutoIns(videoData[currentIdx]); }
   syncShots(); saveSession();
   flash(isMade ? '🟢 성공 확정' : '🔴 실패로 변경', isMade ? 'var(--made)' : 'var(--missed)');
+  review.list.splice(review.k, 1);
+  if (!review.list.length) { endReview(); flash('✅ 후보 확인 완료', 'var(--made)'); return; }
+  reviewGo(Math.min(review.k, review.list.length - 1));
+}
+function reviewDelete() {
+  const it = review.list[review.k];
+  if (!it || it.vi !== currentIdx) return;
+  const vd = videoData[currentIdx], i = vd.allMarkers.indexOf(it.m);
+  if (i >= 0) vd.allMarkers.splice(i, 1);
+  recomputeAutoIns(vd); syncShots(); saveSession();
+  flash('🗑 슛 아님 — 삭제', '#888');
   review.list.splice(review.k, 1);
   if (!review.list.length) { endReview(); flash('✅ 후보 확인 완료', 'var(--made)'); return; }
   reviewGo(Math.min(review.k, review.list.length - 1));
@@ -2421,6 +2451,7 @@ function handleAutoKey(e) {
   if (e.key === 'Escape')     { e.preventDefault(); endReview(); return true; }
   if (e.key === 'ArrowRight') { e.preventDefault(); if (!e.repeat) reviewGo(review.k + 1); return true; }
   if (e.key === 'ArrowLeft')  { e.preventDefault(); if (!e.repeat) reviewGo(review.k - 1); return true; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (!e.repeat) reviewDelete(); return true; }
   const k = keyOf(e);
   if (k === KEYS.made)   { e.preventDefault(); if (!e.repeat) reviewDecide(true);  return true; }
   if (k === KEYS.missed) { e.preventDefault(); if (!e.repeat) reviewDecide(false); return true; }
@@ -2480,7 +2511,7 @@ function compareShots(shots, gt) {
   shots.forEach(sh => {
     const j = gt.findIndex((g, j) => !used.has(j) && g.t >= sh.tEnter - 1.0 && g.t <= sh.tEnd + 2.5);
     if (j >= 0) used.add(j);
-    rows.push({ kind: 'shot', t: sh.tEnter, tEnd: sh.tEnd, tBelow: sh.tBelow, nBelow: sh.nBelow, det: sh.cand ? 'made' : 'missed', gt: j >= 0 ? gt[j].type : null, gtT: j >= 0 ? gt[j].t : null });
+    rows.push({ kind: 'shot', weak: !!sh.weak, t: sh.tEnter, tEnd: sh.tEnd, tBelow: sh.tBelow, nBelow: sh.nBelow, det: sh.cand ? 'made' : 'missed', gt: j >= 0 ? gt[j].type : null, gtT: j >= 0 ? gt[j].t : null });
   });
   gt.forEach((g, j) => { if (!used.has(j)) rows.push({ kind: 'gtonly', t: g.t, gt: g.type, gtT: g.t, det: null }); });
   rows.sort((a, b) => a.t - b.t);
@@ -2489,13 +2520,14 @@ function compareShots(shots, gt) {
 }
 // 확인(truth)한 값이 있으면 그것을 기준으로, 없으면 내 기록을 기준으로 집계
 function verSummary(rows, truth) {
-  const S = { shots: 0, cand: 0, agree: 0, falseCand: 0, missedMade: 0, extra: 0, gtOnly: 0, notShot: 0 };
+  const S = { shots: 0, cand: 0, agree: 0, falseCand: 0, missedMade: 0, extra: 0, gtOnly: 0, notShot: 0, weak: 0, weakReal: 0 };
   rows.forEach(r => {
     const tr = truth[r.id];
     if (tr === 'none') { S.notShot++; return; }
     const ref = tr || r.gt;
     if (r.kind === 'shot') {
       S.shots++; if (r.det === 'made') S.cand++;
+      if (r.weak) { S.weak++; if (ref) S.weakReal++; }
       if (!ref) { S.extra++; return; }
       if (ref === r.det) S.agree++; else if (r.det === 'made') S.falseCand++; else S.missedMade++;
     } else if (ref) S.gtOnly++;
@@ -2565,6 +2597,7 @@ function renderVerify() {
         <span class="warn">후보지만 실제 실패 <b>${S.falseCand}</b></span>
         <span class="${S.missedMade ? 'bad' : 'ok'}">성공을 놓침 <b>${S.missedMade}</b></span>
         <span class="warn">기록 없는 슛 <b>${S.extra}</b></span>
+        <span class="warn">의심(패스·드리블?) <b>${S.weak}</b>개 중 실제 슛 <b>${S.weakReal}</b></span>
         <span class="${S.gtOnly ? 'bad' : 'ok'}">탐지 못 한 기록 <b>${S.gtOnly}</b></span>
       </div>
       <div class="vp-note">틀렸다고 보이는 줄은 영상을 보고 <b>실제 결과</b>를 골라 주세요. (내 기록이 틀렸을 수도 있어요) 고른 값이 정답으로 반영돼 결과 파일에 함께 저장됩니다.</div>
@@ -2574,7 +2607,7 @@ function renderVerify() {
       const [st, cls] = rowStatus(r, ver.truth);
       if (!ver.showAll && cls === 'ok') return;
       const tr = ver.truth[r.id] || '';
-      h += `<tr><td>${fmtSec(r.t)}</td><td>${lab(r.gt)}</td><td>${r.kind === 'shot' ? (r.det === 'made' ? '성공 후보' : '실패') : '-'}</td><td class="${cls}">${st}</td>
+      h += `<tr><td>${fmtSec(r.t)}</td><td>${lab(r.gt)}</td><td>${r.kind === 'shot' ? (r.det === 'made' ? '성공 후보' : '실패') + (r.weak ? ' ⚠의심' : '') : '-'}</td><td class="${cls}">${st}</td>
         <td><select class="vp-truth" data-id="${r.id}"><option value="">(그대로)</option><option value="made"${tr === 'made' ? ' selected' : ''}>성공</option><option value="missed"${tr === 'missed' ? ' selected' : ''}>실패</option><option value="none"${tr === 'none' ? ' selected' : ''}>슛 아님</option></select></td>
         <td><button class="sp-btn vp-go" data-t="${r.t}" style="padding:2px 8px;font-size:.68rem">▶ 보기</button></td></tr>`;
     });
@@ -2583,6 +2616,7 @@ function renderVerify() {
   }
   h += `<div class="sp-footer"><button class="sp-btn" id="vp-close">닫기</button></div>`;
   verBox.innerHTML = h;
+  verPanel.classList.toggle('scanning', !!ver.running);
 
   const $ = id => document.getElementById(id);
   $('vp-close').onclick = closeVerify;
@@ -2660,7 +2694,7 @@ function exportVerify() {
     gtSource: R.gtSrc, gtCount: R.gtN,
     params: { ARR: AD.ARR, BELOW: AD.BELOW, CLUSTER_GAP: AD.CLUSTER_GAP, BELOW_WIN: AD.BELOW_WIN, MIN_BELOW_N: AD.MIN_BELOW_N },
     summary: S,
-    rows: R.rows.map(r => ({ id: r.id, kind: r.kind, t: +r.t.toFixed(3), tEnd: r.tEnd != null ? +r.tEnd.toFixed(3) : null, tBelow: r.tBelow != null ? +r.tBelow.toFixed(3) : null, nBelow: r.nBelow != null ? r.nBelow : null, detected: r.det, myRecord: r.gt, myRecordT: r.gtT != null ? +r.gtT.toFixed(3) : null, truth: ver.truth[r.id] || null })),
+    rows: R.rows.map(r => ({ id: r.id, kind: r.kind, t: +r.t.toFixed(3), tEnd: r.tEnd != null ? +r.tEnd.toFixed(3) : null, tBelow: r.tBelow != null ? +r.tBelow.toFixed(3) : null, nBelow: r.nBelow != null ? r.nBelow : null, weak: r.weak || false, detected: r.det, myRecord: r.gt, myRecordT: r.gtT != null ? +r.gtT.toFixed(3) : null, truth: ver.truth[r.id] || null })),
     samplesNote: '[t, orangePixels, x, y] — x,y는 림 중심 기준(림 폭 65px로 정규화), 슛 전후 구간만 포함',
     samples,
   };
