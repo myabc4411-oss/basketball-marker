@@ -1790,6 +1790,54 @@ function adShotLike(pts) {
   }
   return false;
 }
+// 성공 확률 모델: 공이 림 근처에 머문 시간(dwell)과 소리 점수로 계산 (119 완.mp4 성공 후보 192개로 맞춤)
+const PM = { D_MU: 0.1288, D_SD: 0.2632, A_MU: 2.584, A_SD: 9.91, W_D: -0.9433, W_A: -0.7804, B: 1.1451, B_D: 1.0522, W_DONLY: -1.3187, HI: 0.8, LO: 0.2 };
+function madeProb(sh) {
+  const d = (sh.dwell - PM.D_MU) / PM.D_SD;
+  const z = (sh.aud === null || sh.aud === undefined)
+    ? PM.B_D + d * PM.W_DONLY
+    : PM.B + (sh.aud - PM.A_MU) / PM.A_SD * PM.W_A + d * PM.W_D;
+  return 1 / (1 + Math.exp(-z));
+}
+// 림 주변(그물 위치)에 공이 머문 시간 — 성공은 휙 통과, 림에 맞고 튕기면 오래 머묾
+function shotDwell(samples, sh) {
+  let first = null, last = null;
+  for (const p of samples) {
+    if (p.t < sh.tEnter - 0.3) continue;
+    if (p.t > sh.tEnd + 1.6) break;
+    if (Math.abs(p.x) < 45 && p.y > -35 && p.y < 20) { if (first === null) first = p.t; last = p.t; }
+  }
+  return first === null ? 0 : last - first;
+}
+// 림 위쪽에서는 안 보였는데 그물 아래로 곧장 떨어지는 공 = 성공 (백보드 뒤/그물에 가려졌던 슛)
+function findNetDrops(samples, shots) {
+  const P = { y0: 15, y1: 100, xa: -50, xb: 50, minN: 2, minDy: 40, gap: 0.25, near: 3.0, maxDx: 45 };
+  const B = samples.filter(p => p.x >= -60 && p.x <= 45 && p.y >= 20 && p.y <= 220);
+  const out = []; let cur = null; const tracks = [];
+  B.forEach(p => { if (cur && p.t - cur[cur.length - 1].t <= P.gap && p.y >= cur[cur.length - 1].y - 8) cur.push(p); else { cur = [p]; tracks.push(cur); } });
+  tracks.forEach(tr => {
+    if (tr.length < P.minN) return;
+    const f = tr[0], l = tr[tr.length - 1];
+    if (f.y < P.y0 || f.y > P.y1 || f.x < P.xa || f.x > P.xb) return;
+    if (l.y - f.y < P.minDy || Math.abs(l.x - f.x) > P.maxDx) return;
+    if (shots.some(s => f.t >= s.tEnter - 1.0 && f.t <= s.tEnd + P.near)) return;
+    out.push({ tEnter: f.t - 0.35, tLast: f.t, pts: tr, weak: false, nBelow: tr.length, cand: true, tBelow: f.t, tEnd: l.t, net: true, dwell: 0 });
+  });
+  return out;
+}
+
+// 탐지된 슛 하나를 어떻게 처리할지 결정: 확실하면 자동 확정, 애매하면 후보(확인 필요)
+function autoDecision(sh, allowSure) {
+  if (sh.net) return { type: 'made', review: true, p: 0.7, net: true };
+  if (sh.cand) {
+    const p = madeProb(sh);
+    if (!sh.weak && allowSure && p >= PM.HI) return { type: 'made', review: false, sure: true, p };
+    if (!sh.weak && allowSure && p <= PM.LO) return { type: 'missed', review: false, sure: true, p };
+    return { type: 'made', review: true, p };
+  }
+  if (sh.maybe) return { type: 'missed', review: true, maybe: true, p: 0.4 };
+  return { type: 'missed', review: !!sh.weak, p: 0 };
+}
 function analyzeShots(samples) {
   const shots = [];
   samples.forEach(s => {
@@ -1811,8 +1859,10 @@ function analyzeShots(samples) {
       if (s.t >= a && s.t <= z && (adInZone(s, AD.BELOW) || adInZone(s, AD.ARR)) && s.t > tEnd) tEnd = s.t;
     });
     sh.tEnd = tEnd;
+    sh.dwell = shotDwell(samples, sh);
+    if (!sh.cand && !sh.weak && sh.pts.length <= 3) { const nx = samples.find(q => q.t > tEnd + 0.05); sh.maybe = (nx ? nx.t - tEnd : 9) >= 0.2; }   // 림 위에서 보이다 사라짐 = 성공일 수도
   });
-  return shots;
+  return shots.concat(findNetDrops(samples, shots)).sort((a, b) => a.tEnter - b.tEnter);
 }
 
 const auto   = { busy:false, abort:false, step:'idle', p:[], hoop:null, scope:'one', rate:3, hoopMode:'one', useAudio: lsGet('bm_useaudio') !== '0', autoSure: lsGet('bm_autosure') !== '0' };
@@ -1938,8 +1988,8 @@ function showScanOptions() {
   parts.push({ node: makeSelect([[2, '2x (정확)'], [3, '3x (권장)'], [4, '4x (빠름)']], auto.rate, v => { auto.rate = parseFloat(v); }) });
   parts.push({ text: '소리 확인' });
   parts.push({ node: makeSelect([[1, '켜기 (권장·후보당 약 4초)'], [0, '끄기']], auto.useAudio ? 1 : 0, v => { auto.useAudio = v === '1'; lsSet('bm_useaudio', v); }) });
-  parts.push({ text: '아주 조용한 성공' });
-  parts.push({ node: makeSelect([[1, '확인 없이 확정 (약 10% 오류)'], [0, '후보로 남겨 직접 확인']], auto.autoSure ? 1 : 0, v => { auto.autoSure = v === '1'; lsSet('bm_autosure', v); }) });
+  parts.push({ text: '성공/실패 확정' });
+  parts.push({ node: makeSelect([[1, '확실한 것은 자동 확정 (약 94% 정확)'], [0, '전부 후보로 남겨 직접 확인']], auto.autoSure ? 1 : 0, v => { auto.autoSure = v === '1'; lsSet('bm_autosure', v); }) });
   parts.push({ btn: clipsMode ? '▶ 편집점 찾기 시작' : '▶ 탐지 시작', cls: 'primary', fn: () => runAuto() });
   if (!clipsMode) parts.push({ btn: '다시 지정', fn: () => beginPick() });
   parts.push({ btn: '취소', fn: () => hideBar() });
@@ -2426,13 +2476,13 @@ async function runAuto() {
   console.log(`🤖 자동 탐지 | 슛 ${tShots} 실패확정 ${tMiss} 성공확정 ${tSure} 성공후보 ${tCand} (${Math.round((performance.now() - t0) / 1000)}초)`);
   if (pend) {
     const withAud = videoData.reduce((a, v) => a + v.allMarkers.filter(m => m.review && m.aud !== undefined && !m.weak).length, 0);
-    const bp = [{ text: `🤖 슛 ${tShots}개 탐지 — 실패 ${tMiss}개·소리로 확실한 성공 ${tSure}개 자동 확정, 애매한 후보 ${tCand}개 확인 필요 ${warn}`, cls: 'ab-msg' }, { btn: `❓ 후보 확인 시작 (${pend}개)`, cls: 'primary', fn: () => startReview() }];
+    const bp = [{ text: `🤖 슛 ${tShots}개 탐지 — 실패 ${tMiss}개 + 확실한 것 ${tSure}개 자동 확정, 애매한 후보 ${tCand}개 확인 필요 ${warn}`, cls: 'ab-msg' }, { btn: `❓ 후보 확인 시작 (${pend}개)`, cls: 'primary', fn: () => startReview() }];
     if (withAud) bp.push({ btn: `🔊 소리로 자동 정리 (${withAud}개)`, cls: 'ok', fn: () => audioSort() });
     bp.push({ btn: '나중에', fn: () => hideBar() });
     setBar(bp);
     startReview();
   } else {
-    setBar([{ text: `🤖 슛 ${tShots}개 탐지 — ${tSure ? `소리로 확실한 성공 ${tSure}개 자동 확정, ` : ''}확인할 후보 없음 ${warn}`, cls: 'ab-msg' }, { btn: '닫기', fn: () => hideBar() }]);
+    setBar([{ text: `🤖 슛 ${tShots}개 탐지 — ${tSure ? `확실한 것 ${tSure}개 자동 확정, ` : ''}확인할 후보 없음 ${warn}`, cls: 'ab-msg' }, { btn: '닫기', fn: () => hideBar() }]);
   }
 }
 
@@ -2446,15 +2496,19 @@ function applyAuto(idx, shots) {
   shots.forEach(sh => {
     const lo = sh.tEnter - 0.5, hi = sh.tEnd + 2.5;
     if (keep.some(m => m.out >= lo && m.out <= hi)) return;   // 이미 직접 기록한 슛은 건너뜀
-    let out = sh.cand ? sh.tBelow + AD.OUT_MADE_AFTER : sh.tEnd + AD.OUT_MISS_AFTER;
+    const dc = autoDecision(sh, auto.autoSure);
+    let out = dc.type === 'made' ? sh.tBelow + AD.OUT_MADE_AFTER : sh.tEnd + (dc.maybe ? AD.OUT_MADE_AFTER : AD.OUT_MISS_AFTER);
     if (vd.duration && out > vd.duration) out = vd.duration;
-    const mk = { type: sh.cand ? 'made' : 'missed', in: out, out, fileName: vd.fileName, auto: true, review: !!(sh.cand || sh.weak) };
+    const mk = { type: dc.type, in: out, out, fileName: vd.fileName, auto: true, review: dc.review };
     if (sh.weak) mk.weak = true;
-    if (auto.autoSure && sh.cand && !sh.weak && sh.aud !== null && sh.aud !== undefined && sh.aud <= AUD.SURE) { mk.review = false; mk.sure = true; sure++; }   // 소리가 아주 조용 = 확실한 성공
+    if (dc.maybe) mk.maybe = true;
+    if (dc.net) mk.net = true;
+    if (dc.sure) { mk.sure = true; sure++; }
+    if (sh.cand || dc.maybe) mk.p = Math.round(dc.p * 100) / 100;
     if (sh.aud !== null && sh.aud !== undefined) mk.aud = Math.round(sh.aud * 100) / 100;
     if (isSub) { mk.sub = true; mk.seq = ++seqCounter; }
     fresh.push(mk);
-    if (sh.cand && !mk.sure) cand++; else if (!sh.cand) miss++;
+    if (mk.review && dc.type === 'made') cand++; else if (dc.type === 'missed' && !mk.review && !dc.sure) miss++;
   });
   const merged = keep.concat(fresh).sort((a, b) => a.out - b.out);
   vd.allMarkers.length = 0;                               // 같은 배열을 유지 (현재 영상 포인터가 그대로 유효)
@@ -2521,7 +2575,7 @@ function updateReviewBar() {
   if (!review.active) return;
   const it = review.list[review.k];
   setBar([
-    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})${it.m.weak ? '  ⚠ 슛이 아닐 수도 있어요 (패스·드리블?)' : ''}`, cls: 'ab-msg' },
+    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})${it.m.weak ? '  ⚠ 슛이 아닐 수도 있어요 (패스·드리블?)' : ''}${it.m.maybe ? '  ❔ 공이 림 위에서 사라졌어요 — 들어갔을 수도' : ''}${it.m.net ? '  ❔ 그물 아래에서 공이 나타났어요 — 성공으로 보임' : ''}${it.m.p !== undefined && !it.m.maybe && !it.m.net ? `  (성공 확률 ${Math.round(it.m.p * 100)}%)` : ''}`, cls: 'ab-msg' },
     ...(audioHint(it.m.aud) ? [{ text: audioHint(it.m.aud).label + ` (${it.m.aud.toFixed(1)})`, cls: 'ab-msg' }] : []),
     { btn: '◀ 이전', fn: () => reviewGo(review.k - 1) },
     { btn: `${fmtKey(KEYS.made)} 성공 확정`, cls: 'ok', fn: () => reviewDecide(true) },
@@ -2540,7 +2594,8 @@ function reviewDecide(isMade) {
   const m = it.m;
   reviewHist.push({ kind: 'decide', vi: it.vi, m, prevType: m.type, k: review.k });
   m.review = false;
-  if (!isMade) { m.type = 'missed'; recomputeAutoIns(videoData[currentIdx]); }
+  m.type = isMade ? 'made' : 'missed';
+  recomputeAutoIns(videoData[currentIdx]);
   syncShots(); saveSession();
   flash(isMade ? '🟢 성공 확정' : '🔴 실패로 변경', isMade ? 'var(--made)' : 'var(--missed)');
   review.list.splice(review.k, 1);
@@ -2553,10 +2608,10 @@ function audioSort() {
   const snap = [];
   videoData.forEach(vd => {
     vd.allMarkers.forEach(m => {
-      if (!m.review || m.weak || m.aud === undefined) return;
+      if (!m.review || m.weak || m.net || m.maybe || m.aud === undefined) return;
       snap.push({ m, type: m.type, vd });
       m.review = false;
-      if (m.aud <= AUD.THR) ok++; else { m.type = 'missed'; miss++; }
+      if (m.p !== undefined ? m.p >= 0.5 : m.aud <= AUD.THR) ok++; else { m.type = 'missed'; miss++; }
     });
     recomputeAutoIns(vd); syncVd(vd);
   });
@@ -2710,7 +2765,9 @@ function compareShots(shots, gt0) {
   shots.forEach(sh => {
     const j = gt.findIndex((g, j) => !used.has(j) && g.t >= sh.tEnter - 1.0 && g.t <= sh.tEnd + 2.5);
     if (j >= 0) used.add(j);
-    rows.push({ kind: 'shot', weak: !!sh.weak, aud: sh.aud === undefined ? null : sh.aud, t: sh.tEnter, tEnd: sh.tEnd, tBelow: sh.tBelow, nBelow: sh.nBelow, det: sh.cand ? 'made' : 'missed', gt: j >= 0 ? gt[j].type : null, gtT: j >= 0 ? gt[j].t0 : null });
+    const dc = autoDecision(sh, true);
+    const det = dc.review ? (dc.p >= 0.5 ? 'made' : 'missed') : dc.type;     // 후보는 확률 50%를 기준으로 추정
+    rows.push({ kind: 'shot', weak: !!sh.weak, aud: sh.aud === undefined ? null : sh.aud, t: sh.tEnter, tEnd: sh.tEnd, tBelow: sh.tBelow, nBelow: sh.nBelow, dwell: sh.dwell === undefined ? null : sh.dwell, p: dc.p, rev: !!dc.review, sure: !!dc.sure, kindx: dc.net ? 'net' : dc.maybe ? 'maybe' : '', det, gt: j >= 0 ? gt[j].type : null, gtT: j >= 0 ? gt[j].t0 : null });
   });
   gt.forEach((g, j) => { if (!used.has(j)) rows.push({ kind: 'gtonly', t: g.t, gt: g.type, gtT: g.t0, det: null }); });
   rows.sort((a, b) => a.t - b.t);
@@ -2720,7 +2777,7 @@ function compareShots(shots, gt0) {
 }
 // 확인(truth)한 값이 있으면 그것을 기준으로, 없으면 내 기록을 기준으로 집계
 function verSummary(rows, truth) {
-  const S = { shots: 0, cand: 0, agree: 0, falseCand: 0, missedMade: 0, extra: 0, gtOnly: 0, notShot: 0, weak: 0, weakReal: 0, audN: 0, audOk: 0 };
+  const S = { shots: 0, cand: 0, agree: 0, falseCand: 0, missedMade: 0, extra: 0, gtOnly: 0, notShot: 0, weak: 0, weakReal: 0, audN: 0, audOk: 0, autoN: 0, autoOk: 0, revN: 0 };
   rows.forEach(r => {
     const tr = truth[r.id];
     if (tr === 'none') { S.notShot++; return; }
@@ -2729,6 +2786,7 @@ function verSummary(rows, truth) {
       S.shots++; if (r.det === 'made') S.cand++;
       if (r.weak) { S.weak++; if (ref) S.weakReal++; }
       if (r.det === 'made' && ref && r.aud !== null && r.aud !== undefined) { S.audN++; if ((r.aud <= AUD.THR) === (ref === 'made')) S.audOk++; }
+      if (r.rev) S.revN++; else if (ref) { S.autoN++; if (ref === r.det) S.autoOk++; }
       if (!ref) { S.extra++; return; }
       if (ref === r.det) S.agree++; else if (r.det === 'made') S.falseCand++; else S.missedMade++;
     } else if (ref) S.gtOnly++;
@@ -2800,6 +2858,7 @@ function renderVerify() {
         <span class="warn">후보지만 실제 실패 <b>${S.falseCand}</b></span>
         <span class="${S.missedMade ? 'bad' : 'ok'}">성공을 놓침 <b>${S.missedMade}</b></span>
         <span class="warn">기록 없는 슛 <b>${S.extra}</b></span>
+        <span class="${S.autoN && S.autoOk / S.autoN >= 0.93 ? 'ok' : 'warn'}">자동 확정 <b>${S.autoOk}</b>/${S.autoN} 맞음</span><span class="warn">확인 필요 후보 <b>${S.revN}</b></span>
         ${S.audN ? `<span class="${S.audOk / S.audN >= 0.85 ? 'ok' : 'warn'}">🔊 소리 판정 <b>${S.audOk}</b>/${S.audN} 맞음</span>` : ''}
         <span class="warn">의심(패스·드리블?) <b>${S.weak}</b>개 중 실제 슛 <b>${S.weakReal}</b></span>
         <span class="${S.gtOnly ? 'bad' : 'ok'}">탐지 못 한 기록 <b>${S.gtOnly}</b></span>
@@ -2906,7 +2965,7 @@ function exportVerify() {
     gtSource: R.gtSrc, gtCount: R.gtN, gtOffset: R.off || 0,
     params: { AUD: AUD, ARR: AD.ARR, BELOW: AD.BELOW, CLUSTER_GAP: AD.CLUSTER_GAP, BELOW_WIN: AD.BELOW_WIN, MIN_BELOW_N: AD.MIN_BELOW_N },
     summary: S,
-    rows: R.rows.map(r => ({ id: r.id, kind: r.kind, t: +r.t.toFixed(3), tEnd: r.tEnd != null ? +r.tEnd.toFixed(3) : null, tBelow: r.tBelow != null ? +r.tBelow.toFixed(3) : null, nBelow: r.nBelow != null ? r.nBelow : null, weak: r.weak || false, audio: r.aud === null || r.aud === undefined ? null : +r.aud.toFixed(2), detected: r.det, myRecord: r.gt, myRecordT: r.gtT != null ? +r.gtT.toFixed(3) : null, truth: ver.truth[r.id] || null })),
+    rows: R.rows.map(r => ({ id: r.id, kind: r.kind, t: +r.t.toFixed(3), tEnd: r.tEnd != null ? +r.tEnd.toFixed(3) : null, tBelow: r.tBelow != null ? +r.tBelow.toFixed(3) : null, nBelow: r.nBelow != null ? r.nBelow : null, weak: r.weak || false, p: r.p != null ? +r.p.toFixed(3) : null, review: !!r.rev, sure: !!r.sure, dwell: r.dwell != null ? +r.dwell.toFixed(3) : null, audio: r.aud === null || r.aud === undefined ? null : +r.aud.toFixed(2), detected: r.det, myRecord: r.gt, myRecordT: r.gtT != null ? +r.gtT.toFixed(3) : null, truth: ver.truth[r.id] || null })),
     samplesNote: '[t, orangePixels, x, y] — x,y는 림 중심 기준(림 폭 65px로 정규화), 슛 전후 구간만 포함',
     samples,
   };
