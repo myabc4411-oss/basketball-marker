@@ -1815,7 +1815,7 @@ function analyzeShots(samples) {
   return shots;
 }
 
-const auto   = { busy:false, abort:false, step:'idle', p:[], hoop:null, scope:'one', rate:3, hoopMode:'one', useAudio: lsGet('bm_useaudio') !== '0' };
+const auto   = { busy:false, abort:false, step:'idle', p:[], hoop:null, scope:'one', rate:3, hoopMode:'one', useAudio: lsGet('bm_useaudio') !== '0', autoSure: lsGet('bm_autosure') !== '0' };
 const review = { active:false, list:[], k:0, loopStart:0, loopEnd:0 };
 let reviewHist = [];      // 후보 확인 기록 (Z로 방금 전 판단부터 되돌림)
 let sortUndo = null;      // 소리 자동 정리 직전 상태
@@ -1938,6 +1938,8 @@ function showScanOptions() {
   parts.push({ node: makeSelect([[2, '2x (정확)'], [3, '3x (권장)'], [4, '4x (빠름)']], auto.rate, v => { auto.rate = parseFloat(v); }) });
   parts.push({ text: '소리 확인' });
   parts.push({ node: makeSelect([[1, '켜기 (권장·후보당 약 4초)'], [0, '끄기']], auto.useAudio ? 1 : 0, v => { auto.useAudio = v === '1'; lsSet('bm_useaudio', v); }) });
+  parts.push({ text: '아주 조용한 성공' });
+  parts.push({ node: makeSelect([[1, '확인 없이 확정 (약 10% 오류)'], [0, '후보로 남겨 직접 확인']], auto.autoSure ? 1 : 0, v => { auto.autoSure = v === '1'; lsSet('bm_autosure', v); }) });
   parts.push({ btn: clipsMode ? '▶ 편집점 찾기 시작' : '▶ 탐지 시작', cls: 'primary', fn: () => runAuto() });
   if (!clipsMode) parts.push({ btn: '다시 지정', fn: () => beginPick() });
   parts.push({ btn: '취소', fn: () => hideBar() });
@@ -2448,7 +2450,7 @@ function applyAuto(idx, shots) {
     if (vd.duration && out > vd.duration) out = vd.duration;
     const mk = { type: sh.cand ? 'made' : 'missed', in: out, out, fileName: vd.fileName, auto: true, review: !!(sh.cand || sh.weak) };
     if (sh.weak) mk.weak = true;
-    if (sh.cand && !sh.weak && sh.aud !== null && sh.aud !== undefined && sh.aud <= AUD.SURE) { mk.review = false; mk.sure = true; sure++; }   // 소리가 아주 조용 = 확실한 성공
+    if (auto.autoSure && sh.cand && !sh.weak && sh.aud !== null && sh.aud !== undefined && sh.aud <= AUD.SURE) { mk.review = false; mk.sure = true; sure++; }   // 소리가 아주 조용 = 확실한 성공
     if (sh.aud !== null && sh.aud !== undefined) mk.aud = Math.round(sh.aud * 100) / 100;
     if (isSub) { mk.sub = true; mk.seq = ++seqCounter; }
     fresh.push(mk);
@@ -2686,16 +2688,34 @@ function verGt() {
 }
 
 // 탐지된 슛 ↔ 내 기록 짝짓기
-function compareShots(shots, gt) {
+// 내 기록(점수판 자막 등)이 슛 시각보다 일정하게 앞서거나 늦는 경우를 자동 보정: 가까운 기록과의 시간 차 중앙값
+function estimateOffset(shots, gt) {
+  if (shots.length < 8 || gt.length < 8) return 0;
+  const gs = gt.map(g => g.t).sort((a, b) => a - b), d = [];
+  shots.forEach(sh => {
+    let best = null;
+    gs.forEach(t => { const x = t - sh.tEnter; if (Math.abs(x) <= 4 && (best === null || Math.abs(x) < Math.abs(best))) best = x; });
+    if (best !== null) d.push(best);
+  });
+  if (d.length < 8) return 0;
+  d.sort((a, b) => a - b);
+  const med = d[Math.floor(d.length / 2)];
+  const tight = d.filter(x => Math.abs(x - med) <= 0.8).length / d.length;
+  return (Math.abs(med) > 0.4 && tight >= 0.7) ? Math.round(med * 100) / 100 : 0;
+}
+function compareShots(shots, gt0) {
+  const off = estimateOffset(shots, gt0);
+  const gt = gt0.map(g => Object.assign({}, g, { t0: g.t, t: g.t - off }));    // 슛 시각 기준으로 맞춘 기록 시각
   const used = new Set(), rows = [];
   shots.forEach(sh => {
     const j = gt.findIndex((g, j) => !used.has(j) && g.t >= sh.tEnter - 1.0 && g.t <= sh.tEnd + 2.5);
     if (j >= 0) used.add(j);
-    rows.push({ kind: 'shot', weak: !!sh.weak, aud: sh.aud === undefined ? null : sh.aud, t: sh.tEnter, tEnd: sh.tEnd, tBelow: sh.tBelow, nBelow: sh.nBelow, det: sh.cand ? 'made' : 'missed', gt: j >= 0 ? gt[j].type : null, gtT: j >= 0 ? gt[j].t : null });
+    rows.push({ kind: 'shot', weak: !!sh.weak, aud: sh.aud === undefined ? null : sh.aud, t: sh.tEnter, tEnd: sh.tEnd, tBelow: sh.tBelow, nBelow: sh.nBelow, det: sh.cand ? 'made' : 'missed', gt: j >= 0 ? gt[j].type : null, gtT: j >= 0 ? gt[j].t0 : null });
   });
-  gt.forEach((g, j) => { if (!used.has(j)) rows.push({ kind: 'gtonly', t: g.t, gt: g.type, gtT: g.t, det: null }); });
+  gt.forEach((g, j) => { if (!used.has(j)) rows.push({ kind: 'gtonly', t: g.t, gt: g.type, gtT: g.t0, det: null }); });
   rows.sort((a, b) => a.t - b.t);
   rows.forEach(r => { r.id = (r.kind === 'shot' ? 's' : 'g') + r.t.toFixed(2); });
+  rows.off = off;
   return rows;
 }
 // 확인(truth)한 값이 있으면 그것을 기준으로, 없으면 내 기록을 기준으로 집계
@@ -2784,6 +2804,7 @@ function renderVerify() {
         <span class="warn">의심(패스·드리블?) <b>${S.weak}</b>개 중 실제 슛 <b>${S.weakReal}</b></span>
         <span class="${S.gtOnly ? 'bad' : 'ok'}">탐지 못 한 기록 <b>${S.gtOnly}</b></span>
       </div>
+      ${R.off ? `<div class="vp-note" style="color:var(--accent)">⏱ 내 기록이 슛 시각보다 평균 ${Math.abs(R.off).toFixed(1)}초 ${R.off < 0 ? '일찍' : '늦게'} 찍혀 있어서, 그만큼 보정해서 비교했어요.</div>` : ''}
       <div class="vp-note">틀렸다고 보이는 줄은 영상을 보고 <b>실제 결과</b>를 골라 주세요. (내 기록이 틀렸을 수도 있어요) 고른 값이 정답으로 반영돼 결과 파일에 함께 저장됩니다.</div>
       <label class="vp-note"><input type="checkbox" id="vp-all" ${ver.showAll ? 'checked' : ''}> 일치한 슛도 보기</label>
       <table class="vp-tab"><tr><th>시각</th><th>내 기록</th><th>탐지</th><th>판정</th><th>실제 결과</th><th></th></tr>`;
@@ -2864,7 +2885,7 @@ async function runVerify() {
     const rows  = compareShots(shots, gt);
     if (hoop) vd.hoop = hoop;
     saveSession();
-    ver.result = { videoName: vd.fileName, duration: vd.duration || res.duration, fps: vd.fps, hoop, hoops: clipsMode ? (vd.hoops || []) : null, clips: clipsMode ? (vd.clips || []) : null, rate: ver.rate, gtSrc: ver.gtSrc, gtN: gt.length, rows, shots, samples: res.samples, medStep: res.medStep };
+    ver.result = { videoName: vd.fileName, duration: vd.duration || res.duration, fps: vd.fps, hoop, hoops: clipsMode ? (vd.hoops || []) : null, clips: clipsMode ? (vd.clips || []) : null, rate: ver.rate, gtSrc: ver.gtSrc, gtN: gt.length, off: rows.off || 0, rows, shots, samples: res.samples, medStep: res.medStep };
     if (res.medStep > 0.12) ver.msg = '⚠ 프레임이 많이 건너뛰어졌어요 — 스캔 배속을 낮춰 보세요';
   }
   if (verPanel.classList.contains('open')) renderVerify();
@@ -2882,7 +2903,7 @@ function exportVerify() {
   const out = {
     app: 'basketball_marker', kind: 'auto-detect-verify', createdAt: new Date().toISOString(),
     video: { name: R.videoName, duration: R.duration, fps: R.fps }, hoop: R.hoop, hoops: R.hoops, clips: R.clips, scanRate: R.rate, medStep: R.medStep,
-    gtSource: R.gtSrc, gtCount: R.gtN,
+    gtSource: R.gtSrc, gtCount: R.gtN, gtOffset: R.off || 0,
     params: { AUD: AUD, ARR: AD.ARR, BELOW: AD.BELOW, CLUSTER_GAP: AD.CLUSTER_GAP, BELOW_WIN: AD.BELOW_WIN, MIN_BELOW_N: AD.MIN_BELOW_N },
     summary: S,
     rows: R.rows.map(r => ({ id: r.id, kind: r.kind, t: +r.t.toFixed(3), tEnd: r.tEnd != null ? +r.tEnd.toFixed(3) : null, tBelow: r.tBelow != null ? +r.tBelow.toFixed(3) : null, nBelow: r.nBelow != null ? r.nBelow : null, weak: r.weak || false, audio: r.aud === null || r.aud === undefined ? null : +r.aud.toFixed(2), detected: r.det, myRecord: r.gt, myRecordT: r.gtT != null ? +r.gtT.toFixed(3) : null, truth: ver.truth[r.id] || null })),
