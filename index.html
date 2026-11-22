@@ -2086,16 +2086,23 @@ function scanOne(idx, hoop, rate, onProg, opts) {
         const grab = () => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.drawImage(sv, G.sx, G.sy, G.sw, G.sh, 0, 0, W, H); return ctx.getImageData(0, 0, W, H).data; };
         const isOrange = (r, g, b) => r > 110 && (r - b) > 55 && (r - g) > 25 && (r - g) < 110 && (g - b) >= 0 && (g - b) < 70;
         const seekTo = t => new Promise(res => { const to = setTimeout(res, 4000); sv.onseeked = () => { clearTimeout(to); res(); }; sv.currentTime = t; });
-        let stat = null, curSamples = null, lc = null;
+        let stat = null, curSamples = null, lc = null, bgR = null, bgG = null, bgB = null;
         const tot = { shots: 0, cand: 0, weak: 0, last: [] };
         const sample = t => {
           const d = grab();
-          let n = 0, sxx = 0, syy = 0;
+          let n = 0, sxx = 0, syy = 0, nd = 0, dxx = 0, dyy = 0, dx2 = 0, dy2 = 0, usedDark = false;
           for (let i = 0, p = 0; i < W * H; i++, p += 4) {
-            if (!stat[i] && isOrange(d[p], d[p + 1], d[p + 2])) { n++; sxx += i % W; syy += (i / W) | 0; }
+            const r = d[p], g = d[p + 1], b = d[p + 2];
+            if (!stat[i] && isOrange(r, g, b)) { n++; sxx += i % W; syy += (i / W) | 0; }
+            else if (r > 60 && r - b > 22 && r >= g && Math.abs(r - bgR[i]) + Math.abs(g - bgG[i]) + Math.abs(b - bgB[i]) > 90) { const xx = i % W, yy = (i / W) | 0; nd++; dxx += xx; dyy += yy; dx2 += xx * xx; dy2 += yy * yy; }   // 어둡게 찍힌 공 후보: 배경과 달라진 갈색 픽셀
+          }
+          // 주황색이 거의 안 잡힐 때만, 공처럼 작고 뭉친 덩어리(사람·조명 변화는 제외)를 대신 사용
+          if (n < 20 && nd >= 60 && nd <= 900) {
+            const mx = dxx / nd, my = dyy / nd, sdx = Math.sqrt(Math.max(0, dx2 / nd - mx * mx)), sdy = Math.sqrt(Math.max(0, dy2 / nd - my * my));
+            if (sdx <= 11 && sdy <= 11) { n = nd; sxx = dxx; syy = dyy; usedDark = true; }
           }
           if (n >= 20) {
-            const s = { t, n, x: sxx / n - AD.RIM_X, y: syy / n - AD.RIM_Y }; curSamples.push(s); lc.add(s);
+            const s = { t, n, x: sxx / n - AD.RIM_X, y: syy / n - AD.RIM_Y }; if (usedDark) s.dk = 1; curSamples.push(s); lc.add(s);
             if (lvBox.classList.contains('on') && !lvBox.classList.contains('min')) {   // 앱이 "공"이라고 보는 위치를 빨간 원으로 표시
               const px = (G.sx + (sxx / n) / G.s) / vw, py = (G.sy + (syy / n) / G.s) / vh, rr = Math.sqrt(n / Math.PI) / G.s / vw * 100 * 2;
               lvBall.style.cssText = `display:block;left:${px * 100}%;top:${py * 100}%;width:${Math.max(rr, 1.6)}%;height:${Math.max(rr, 1.6) * vw / vh}%`;
@@ -2153,14 +2160,24 @@ function scanOne(idx, hoop, rate, onProg, opts) {
           setGeom(sg.hoop); liveHoop(sg.hoop, vw, vh);
           // 1) 움직이지 않는 주황색(림, 바닥의 공 등)을 찾아서 제외
           const K = segs.length === 1 ? 24 : Math.max(4, Math.min(16, Math.round((sg.t1 - sg.t0) / 3)));
-          const cnt = new Uint16Array(W * H);
+          const cnt = new Uint16Array(W * H), bgF = [];
           for (let kk = 0; kk < K && !done; kk++) {
             await seekTo(Math.min(sg.t1 - 0.05, sg.t0 + (sg.t1 - sg.t0) * (kk + 0.5) / K));
             const d = grab();
             for (let i = 0, p = 0; i < W * H; i++, p += 4) if (isOrange(d[p], d[p + 1], d[p + 2])) cnt[i]++;
+            bgF.push(new Uint8ClampedArray(d));
             onProg(sg.t0 / dur, 'static');
           }
           if (done) return;
+          // 배경 영상(각 화소의 중앙값) — 움직이는 어두운 공을 찾는 데 사용
+          bgR = new Uint8Array(W * H); bgG = new Uint8Array(W * H); bgB = new Uint8Array(W * H);
+          { const vr = new Array(bgF.length), vg = new Array(bgF.length), vb = new Array(bgF.length), mid = bgF.length >> 1;
+            for (let i = 0, p = 0; i < W * H; i++, p += 4) {
+              for (let k2 = 0; k2 < bgF.length; k2++) { vr[k2] = bgF[k2][p]; vg[k2] = bgF[k2][p + 1]; vb[k2] = bgF[k2][p + 2]; }
+              vr.sort((x, y) => x - y); vg.sort((x, y) => x - y); vb.sort((x, y) => x - y);
+              bgR[i] = vr[mid]; bgG[i] = vg[mid]; bgB[i] = vb[mid];
+            } }
+          bgF.length = 0;
           sv.onseeked = null;
           const base = new Uint8Array(W * H);
           const thr = segs.length === 1 ? K * 0.25 : Math.max(1, K * 0.25);
@@ -2189,7 +2206,19 @@ function scanOne(idx, hoop, rate, onProg, opts) {
   });
 }
 // 스캔 결과 → 슛 목록 (구간별로 따로 분석)
-function shotsFromScan(res) { return [].concat(...res.segs.map(g => analyzeShots(g.samples))); }
+// 기본은 주황색 공만 사용(검증된 방식). 어두운 공 보조 탐지(dk)로만 찾아진 슛은 "의심"으로 추가해 직접 확인하게 함.
+function shotsFromScan(res) {
+  const near = (a, b) => b.tEnter <= a.tEnd + 0.5 && b.tEnd >= a.tEnter - 0.5;
+  const out = [];
+  res.segs.forEach(g => {
+    const base = analyzeShots(g.samples.filter(s => !s.dk));
+    out.push(...base);
+    if (g.samples.some(s => s.dk)) {
+      analyzeShots(g.samples).forEach(sh => { if (!base.some(b => near(sh, b))) { sh.weak = true; sh.dkOnly = true; out.push(sh); } });
+    }
+  });
+  return out.sort((a, b) => a.tEnter - b.tEnter);
+}
 
 // ==========================================
 // 🎬 구간별 골대 — 편집점을 찾아 클립으로 나누고, 같은 장면끼리 묶어 골대를 한 번씩만 지정
