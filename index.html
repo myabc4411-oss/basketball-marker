@@ -1904,6 +1904,8 @@ function openAuto() {
   const pend = pendingReviewCount();
   const parts = [{ text: '🤖 자동 탐지', cls: 'ab-msg' }];
   if (pend) parts.push({ btn: `❓ 후보 확인 (${pend}개)`, cls: 'ok', fn: () => startReview() });
+  const autoN = videoData.reduce((a, v) => a + v.allMarkers.filter(m => m.auto).length, 0);
+  if (autoN) parts.push({ btn: `👀 자동 결과 전부 훑어보기 (${autoN}개)`, fn: () => startReview(true) });
   parts.push({ btn: pend ? '새로 탐지' : '▶ 탐지 시작', cls: 'primary', fn: () => { auto.hoopMode = 'one'; beginPick(); } });
   parts.push({ btn: '🎬 구간별 탐지 (편집·이어붙인 영상)', fn: () => { auto.hoopMode = 'clips'; auto.scope = 'one'; showScanOptions(); } });
   parts.push({ btn: '닫기', fn: () => { cancelPick(); hideBar(); } });
@@ -2476,7 +2478,7 @@ async function runAuto() {
   console.log(`🤖 자동 탐지 | 슛 ${tShots} 실패확정 ${tMiss} 성공확정 ${tSure} 성공후보 ${tCand} (${Math.round((performance.now() - t0) / 1000)}초)`);
   if (pend) {
     const withAud = videoData.reduce((a, v) => a + v.allMarkers.filter(m => m.review && m.aud !== undefined && !m.weak).length, 0);
-    const bp = [{ text: `🤖 슛 ${tShots}개 탐지 — 실패 ${tMiss}개 + 확실한 것 ${tSure}개 자동 확정, 애매한 후보 ${tCand}개 확인 필요 ${warn}`, cls: 'ab-msg' }, { btn: `❓ 후보 확인 시작 (${pend}개)`, cls: 'primary', fn: () => startReview() }];
+    const bp = [{ text: `🤖 슛 ${tShots}개 탐지 — 실패 ${tMiss}개 + 확실한 것 ${tSure}개 자동 확정, 애매한 후보 ${tCand}개 확인 필요 ${warn}`, cls: 'ab-msg' }, { btn: `❓ 후보 확인 시작 (${pend}개)`, cls: 'primary', fn: () => startReview() }, { btn: '👀 자동 확정 포함 전부 훑어보기', fn: () => startReview(true) }];
     if (withAud) bp.push({ btn: `🔊 소리로 자동 정리 (${withAud}개)`, cls: 'ok', fn: () => audioSort() });
     bp.push({ btn: '나중에', fn: () => hideBar() });
     setBar(bp);
@@ -2540,14 +2542,14 @@ function recomputeAutoIns(vd) {
 }
 
 // ── 후보 확인 ──
-function buildReviewList() {
+function buildReviewList(all) {
   const list = [];
-  videoData.forEach((vd, vi) => vd.allMarkers.filter(m => m.review).sort((a, b) => a.out - b.out).forEach(m => list.push({ vi, m })));
+  videoData.forEach((vd, vi) => vd.allMarkers.filter(m => all ? (m.auto || m.review) : m.review).sort((a, b) => a.out - b.out).forEach(m => list.push({ vi, m })));
   return list;
 }
 function reviewCur() { return review.active && review.list[review.k] ? review.list[review.k].m : null; }
-function startReview() {
-  review.list = buildReviewList();
+function startReview(all) {
+  review.list = buildReviewList(all);
   if (!review.list.length) { flash('확인할 후보가 없어요', '#888'); hideBar(); return; }
   reviewHist = [];
   review.active = true;
@@ -2575,7 +2577,7 @@ function updateReviewBar() {
   if (!review.active) return;
   const it = review.list[review.k];
   setBar([
-    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})${it.m.weak ? '  ⚠ 슛이 아닐 수도 있어요 (패스·드리블?)' : ''}${it.m.maybe ? '  ❔ 공이 림 위에서 사라졌어요 — 들어갔을 수도' : ''}${it.m.net ? '  ❔ 그물 아래에서 공이 나타났어요 — 성공으로 보임' : ''}${it.m.p !== undefined && !it.m.maybe && !it.m.net ? `  (성공 확률 ${Math.round(it.m.p * 100)}%)` : ''}`, cls: 'ab-msg' },
+    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})${it.m.weak ? '  ⚠ 슛이 아닐 수도 있어요 (패스·드리블?)' : ''}${it.m.sure ? '  ✔ 자동 확정된 것 — 틀렸으면 바꿔 주세요' : ''}${it.m.maybe ? '  ❔ 공이 림 위에서 사라졌어요 — 들어갔을 수도' : ''}${it.m.net ? '  ❔ 그물 아래에서 공이 나타났어요 — 성공으로 보임' : ''}${it.m.p !== undefined && !it.m.maybe && !it.m.net ? `  (성공 확률 ${Math.round(it.m.p * 100)}%)` : ''}`, cls: 'ab-msg' },
     ...(audioHint(it.m.aud) ? [{ text: audioHint(it.m.aud).label + ` (${it.m.aud.toFixed(1)})`, cls: 'ab-msg' }] : []),
     { btn: '◀ 이전', fn: () => reviewGo(review.k - 1) },
     { btn: `${fmtKey(KEYS.made)} 성공 확정`, cls: 'ok', fn: () => reviewDecide(true) },
@@ -2592,7 +2594,7 @@ function reviewDecide(isMade) {
   const it = review.list[review.k];
   if (!it || it.vi !== currentIdx) return;
   const m = it.m;
-  reviewHist.push({ kind: 'decide', vi: it.vi, m, prevType: m.type, k: review.k });
+  reviewHist.push({ kind: 'decide', vi: it.vi, m, prevType: m.type, prevReview: !!m.review, k: review.k });
   m.review = false;
   m.type = isMade ? 'made' : 'missed';
   recomputeAutoIns(videoData[currentIdx]);
@@ -2639,7 +2641,7 @@ function reviewUndo() {
   const h = reviewHist.pop();
   if (!h) { flash('되돌릴 확인 기록이 없어요', '#888'); return; }
   const vd = videoData[h.vi]; if (!vd) return;
-  h.m.type = h.prevType; h.m.review = true;
+  h.m.type = h.prevType; h.m.review = h.prevReview !== false;
   if (h.kind === 'delete' && vd.allMarkers.indexOf(h.m) < 0) {
     const pos = (h.pos >= 0 && h.pos <= vd.allMarkers.length) ? h.pos : vd.allMarkers.length;
     vd.allMarkers.splice(pos, 0, h.m);
@@ -2658,7 +2660,7 @@ function reviewDelete() {
   const it = review.list[review.k];
   if (!it || it.vi !== currentIdx) return;
   const vd = videoData[currentIdx], i = vd.allMarkers.indexOf(it.m);
-  reviewHist.push({ kind: 'delete', vi: it.vi, m: it.m, pos: i, prevType: it.m.type, k: review.k });
+  reviewHist.push({ kind: 'delete', vi: it.vi, m: it.m, pos: i, prevType: it.m.type, prevReview: !!it.m.review, k: review.k });
   if (i >= 0) vd.allMarkers.splice(i, 1);
   recomputeAutoIns(vd); syncShots(); saveSession();
   flash('🗑 슛 아님 — 삭제', '#888');
