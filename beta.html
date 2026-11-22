@@ -1,0 +1,3005 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🏀 농구 슛 마커</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans+KR:wght@300;400;600&display=swap');
+
+  :root {
+    --bg:      #0a0a0f;
+    --surface: #13131a;
+    --border:  #222230;
+    --made:    #00e87a;
+    --missed:  #ff3b3b;
+    --accent:  #f5a623;
+    --in-pt:   #00c8ff;
+    --count:   #c77dff;
+    --text:    #e8e8f0;
+    --muted:   #555570;
+    --bar-h:   12px;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'IBM Plex Sans KR', sans-serif;
+    height: 100vh; display: flex; flex-direction: column;
+    overflow: hidden; user-select: none;
+  }
+
+  /* 모드별 표시/숨김 */
+  body[data-mode="count"] .only-shot  { display:none !important; }
+  body[data-mode="shot"]  .only-count { display:none !important; }
+
+  /* ── 업로드 화면 ── */
+  #upload-screen {
+    flex:1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:24px;
+  }
+  .upload-title {
+    font-family:'IBM Plex Mono',monospace; font-size:2rem;
+    font-weight:700; color:var(--accent);
+  }
+  .upload-sub { color:var(--muted); font-size:0.9rem; }
+  .upload-zone {
+    border:2px dashed var(--border); border-radius:16px;
+    width:520px; min-height:180px; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:10px;
+    cursor:pointer; transition:border-color .2s,background .2s;
+    position:relative; padding:20px;
+  }
+  .upload-zone:hover,.upload-zone.drag { border-color:var(--accent); background:#1a1a10; }
+  .upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .upload-icon { font-size:2.5rem; }
+  .upload-label { font-size:0.9rem; color:var(--muted); }
+  .upload-note  { font-size:0.72rem; color:#333348; font-family:'IBM Plex Mono',monospace; }
+
+  /* 업로드된 파일 목록 */
+  #file-queue {
+    width:520px; display:flex; flex-direction:column; gap:6px;
+  }
+  .fq-item {
+    display:flex; align-items:center; justify-content:space-between;
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; padding:8px 12px;
+    font-family:'IBM Plex Mono',monospace; font-size:0.75rem;
+  }
+  .fq-item.active { border-color:var(--accent); color:var(--accent); }
+  .fq-item.done   { border-color:var(--made); color:var(--made); opacity:.6; }
+  .fq-num { color:var(--muted); margin-right:10px; }
+  .fq-name { flex:1; }
+  .fq-status { font-size:0.65rem; }
+
+  #btn-start {
+    background:var(--accent); border:none; border-radius:10px;
+    padding:10px 32px; font-family:'IBM Plex Mono',monospace;
+    font-size:0.9rem; font-weight:700; color:#000; cursor:pointer;
+    transition:opacity .15s; display:none;
+  }
+  #btn-start:hover { opacity:.85; }
+
+  /* ── 에디터 ── */
+  #editor { flex:1; display:none; flex-direction:column; overflow:hidden; }
+
+  /* 상단바 */
+  #topbar {
+    display:flex; align-items:center; gap:12px;
+    padding:6px 14px; background:var(--surface);
+    border-bottom:1px solid var(--border);
+    font-family:'IBM Plex Mono',monospace; font-size:0.75rem;
+    flex-shrink:0;
+  }
+  body[data-mode="count"] #topbar { border-bottom-color:var(--count); }
+  .tb-title  { color:var(--accent); font-weight:700; font-size:0.88rem; }
+  .tb-time   { color:var(--text); }
+  .tb-speed  { color:var(--in-pt); }
+  .tb-fps    { color:var(--muted); font-size:0.7rem; }
+  .tb-sep    { color:var(--border); }
+  .tb-counts { display:flex; gap:12px; margin-left:auto; align-items:center; }
+  .cnt-made   { color:var(--made); }
+  .cnt-missed { color:var(--missed); }
+
+  #btn-mode {
+    background:transparent; border:1px solid var(--accent); color:var(--accent);
+    border-radius:5px; padding:2px 9px; cursor:pointer;
+    font-family:'IBM Plex Mono',monospace; font-size:0.7rem; font-weight:700;
+    white-space:nowrap;
+  }
+  body[data-mode="count"] #btn-mode { border-color:var(--count); color:var(--count); }
+  #btn-mode:hover { opacity:.8; }
+
+  /* 영상 진행 표시 */
+  #video-progress-bar {
+    display:flex; align-items:center; gap:6px;
+    padding:5px 14px; background:#0d0d18;
+    border-bottom:1px solid var(--border);
+    flex-shrink:0; overflow-x:auto;
+  }
+  .vp-item {
+    display:flex; align-items:center; gap:5px;
+    padding:3px 10px; border-radius:20px;
+    font-family:'IBM Plex Mono',monospace; font-size:0.65rem;
+    border:1px solid var(--border); color:var(--muted);
+    white-space:nowrap; flex-shrink:0;
+  }
+  .vp-item.active { border-color:var(--accent); color:var(--accent); background:rgba(245,166,35,.08); }
+  .vp-item.done   { border-color:var(--made);   color:var(--made);   background:rgba(60,255,160,.06); cursor:pointer; }
+  .vp-item.done:hover { opacity:.8; }
+  .vp-arrow { color:var(--border); font-size:0.7rem; }
+
+  /* 파일 큐 드래그 */
+  .fq-drag-handle { color:var(--muted); cursor:grab; padding:0 6px 0 0; font-size:0.9rem; }
+  .fq-drag-handle:active { cursor:grabbing; }
+  .fq-item.dragging  { opacity:.3; border-style:dashed; }
+  .fq-item.drag-over { border-color:var(--accent); background:rgba(245,166,35,.1); }
+
+  /* 이전 영상 버튼 */
+  .btn.prev { border-color:#444; color:#888; }
+
+  /* 비디오 + 사이드패널 */
+  #video-wrap {
+    flex:1; display:flex; flex-direction:row;
+    min-height:0; background:#000;
+  }
+  #video-area {
+    flex:1; position:relative; display:flex;
+    align-items:center; justify-content:center;
+    min-width:0; overflow:hidden;
+  }
+  #video { max-width:100%; max-height:100%; display:block; }
+
+  #flash {
+    position:absolute; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    font-family:'IBM Plex Mono',monospace;
+    font-size:2rem; font-weight:700;
+    pointer-events:none; opacity:0; transition:opacity .1s;
+    text-shadow:0 2px 20px rgba(0,0,0,0.8); white-space:nowrap;
+  }
+  #flash.show { opacity:1; }
+
+  #in-overlay {
+    position:absolute; top:12px; left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,200,255,0.15);
+    border:1px solid var(--in-pt); border-radius:6px;
+    padding:4px 14px; font-family:'IBM Plex Mono',monospace;
+    font-size:0.75rem; color:var(--in-pt); display:none;
+  }
+
+  /* 점수판 미리보기 (오른쪽 상단) */
+  #score-overlay {
+    position:absolute; top:12px; right:14px;
+    text-align:right; line-height:1.35; white-space:pre;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:1.25rem; font-weight:700; color:#fff;
+    text-shadow:0 0 5px #000, 0 2px 12px #000;
+    pointer-events:none; display:none;
+  }
+  .sp-num {
+    background:#1a1a28; border:1px solid var(--border); border-radius:6px;
+    padding:4px 10px; width:120px; text-align:right;
+    font-family:'IBM Plex Mono',monospace; font-size:.8rem; font-weight:700;
+    color:var(--accent); outline:none;
+  }
+  .sp-num:focus { border-color:var(--accent); }
+
+  /* 마커 사이드 패널 */
+  #marker-side {
+    width:160px; flex-shrink:0; background:var(--surface);
+    border-left:1px solid var(--border);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  #marker-side-title {
+    padding:7px 10px; font-family:'IBM Plex Mono',monospace;
+    font-size:0.62rem; font-weight:700; color:var(--muted);
+    letter-spacing:.08em; text-transform:uppercase;
+    border-bottom:1px solid var(--border); flex-shrink:0;
+  }
+  #marker-list {
+    flex:1; overflow-y:auto; padding:6px;
+    display:flex; flex-direction:column; gap:4px;
+  }
+  #marker-list::-webkit-scrollbar { width:3px; }
+  #marker-list::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+  .mk-item {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:5px 7px; border-radius:7px;
+    font-family:'IBM Plex Mono',monospace; font-size:0.62rem;
+    border:1px solid; cursor:pointer; transition:opacity .15s; gap:4px;
+  }
+  .mk-item:hover { opacity:.75; }
+  .mk-item.made   { border-color:var(--made);   color:var(--made);   background:rgba(60,255,160,.07); }
+  .mk-item.missed { border-color:var(--missed); color:var(--missed); background:rgba(255,59,59,.07); }
+  .mk-item.latest { box-shadow:0 0 0 2px currentColor; font-weight:700; }
+  .mk-label { flex:1; line-height:1.5; }
+  .mk-no { opacity:.7; }
+  .mk-del {
+    background:none; border:none; color:inherit;
+    cursor:pointer; font-size:0.72rem; padding:0; opacity:.5; flex-shrink:0;
+  }
+  .mk-del:hover { opacity:1; }
+  .mk-empty {
+    color:var(--muted); font-size:0.62rem; text-align:center;
+    font-family:'IBM Plex Mono',monospace; padding:16px 6px; line-height:1.6;
+  }
+
+  @keyframes blink {
+    0%,100% { opacity:1; } 50% { opacity:.3; }
+  }
+  .tl-marker.latest { animation:blink 1s ease-in-out 3; }
+
+  /* 진행바 */
+  #timeline-wrap {
+    padding:10px 14px 6px; background:var(--surface);
+    border-top:1px solid var(--border); flex-shrink:0;
+  }
+  #timeline {
+    position:relative; height:var(--bar-h);
+    background:#1e1e2e; border-radius:6px; cursor:pointer; overflow:visible;
+  }
+  #tl-progress {
+    position:absolute; left:0; top:0; bottom:0;
+    background:var(--accent); opacity:.35;
+    border-radius:6px; pointer-events:none;
+  }
+  #tl-cursor {
+    position:absolute; top:-5px; width:3px;
+    height:calc(var(--bar-h) + 10px); background:#fff;
+    border-radius:2px; transform:translateX(-50%); pointer-events:none;
+  }
+  .tl-marker {
+    position:absolute; top:0; bottom:0;
+    pointer-events:none; border-radius:3px; opacity:.75;
+  }
+  .tl-sub-tick {
+    position:absolute; top:-3px; width:3px;
+    height:calc(var(--bar-h) + 6px);
+    border-radius:2px; transform:translateX(-50%); pointer-events:none;
+  }
+  #tl-in-cursor {
+    position:absolute; top:-7px; width:3px;
+    height:calc(var(--bar-h) + 14px); background:var(--in-pt);
+    border-radius:2px; transform:translateX(-50%);
+    pointer-events:none; display:none; box-shadow:0 0 6px var(--in-pt);
+  }
+  #tl-tooltip {
+    position:absolute; bottom:calc(var(--bar-h) + 8px);
+    background:#222; border:1px solid var(--border);
+    border-radius:4px; padding:2px 8px;
+    font-family:'IBM Plex Mono',monospace; font-size:0.68rem;
+    color:var(--text); pointer-events:none; display:none;
+    transform:translateX(-50%); white-space:nowrap;
+  }
+
+  /* 컨트롤바 */
+  #controls {
+    display:flex; align-items:center; gap:6px;
+    padding:7px 14px 9px; background:var(--surface);
+    flex-shrink:0; flex-wrap:wrap;
+  }
+  .btn {
+    font-family:'IBM Plex Mono',monospace; font-size:0.7rem;
+    border:1px solid var(--border); background:transparent;
+    color:var(--muted); border-radius:5px; padding:4px 9px;
+    cursor:default; white-space:nowrap;
+  }
+  .btn span { color:var(--text); font-weight:600; }
+  .btn.made   { border-color:var(--made);   color:var(--made); }
+  .btn.missed { border-color:var(--missed); color:var(--missed); }
+  .btn.mode   { border-color:var(--count);  color:var(--count); cursor:pointer; }
+  .btn.save   { border-color:var(--accent); color:var(--accent); margin-left:auto; }
+  .btn.next   { border-color:var(--in-pt);  color:var(--in-pt); }
+  .btn.cancel { border-color:#444; color:#777; }
+  .sep { width:1px; height:18px; background:var(--border); }
+
+  /* 자동 탐지 */
+  .btn.auto { border-color:var(--in-pt); color:var(--in-pt); cursor:pointer; }
+  .btn.auto:hover { opacity:.8; }
+  #hoop-pick {
+    position:absolute; inset:0; z-index:6; display:none;
+    cursor:crosshair; background:rgba(0,0,0,.12);
+  }
+  #hoop-pick.on { display:block; }
+  .hp-dot {
+    position:absolute; width:14px; height:14px; margin:-7px 0 0 -7px;
+    border:2px solid var(--in-pt); border-radius:50%;
+    background:rgba(0,200,255,.25); pointer-events:none; z-index:7;
+  }
+  #auto-bar {
+    display:none; align-items:center; gap:10px; flex-wrap:wrap;
+    padding:7px 14px; background:#0d1620; border-top:1px solid var(--in-pt);
+    font-family:'IBM Plex Mono',monospace; font-size:.74rem; color:var(--text);
+    flex-shrink:0;
+  }
+  #auto-bar.on { display:flex; }
+  #auto-bar .ab-msg { color:var(--in-pt); font-weight:700; }
+  #auto-bar .ab-sub { color:var(--muted); }
+  #auto-bar select {
+    background:#1a1a28; border:1px solid var(--border); border-radius:5px;
+    color:var(--accent); font-family:inherit; font-size:.72rem; padding:2px 6px; outline:none;
+  }
+  .ab-btn {
+    padding:3px 12px; border-radius:6px; cursor:pointer;
+    font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700;
+    border:1px solid var(--border); background:transparent; color:var(--muted);
+  }
+  .ab-btn:hover { color:var(--text); }
+  .ab-btn.primary { background:var(--in-pt); border:none; color:#001018; }
+  .ab-btn.ok  { border-color:var(--made);   color:var(--made); }
+  .ab-btn.bad { border-color:var(--missed); color:var(--missed); }
+  .ab-prog { flex:1; min-width:120px; height:6px; background:#1e1e2e; border-radius:3px; overflow:hidden; }
+  .ab-prog > div { height:100%; width:0; background:var(--in-pt); }
+  .mk-item.review { border-style:dashed; border-color:var(--accent); color:var(--accent); background:rgba(245,166,35,.08); }
+  .mk-item.cur    { box-shadow:0 0 0 2px var(--in-pt); }
+
+  /* 탐지 미리보기 / 구간별 골대 */
+  #live-box { display:none; position:fixed; right:12px; bottom:12px; width:min(420px,46vw); z-index:300; background:#12121c; border:1px solid var(--border); border-radius:10px; box-shadow:0 8px 30px rgba(0,0,0,.65); overflow:hidden; }
+  #live-box.on { display:block; }
+  #lv-head { display:flex; justify-content:space-between; align-items:center; padding:5px 10px; font-family:'IBM Plex Mono',monospace; font-size:.72rem; font-weight:700; color:var(--in-pt); }
+  #lv-head button { background:none; border:none; color:var(--muted); cursor:pointer; font-size:.8rem; }
+  #lv-wrap { position:relative; background:#000; line-height:0; }
+  #live-box.min #lv-wrap { height:0; overflow:hidden; }
+  #lv-roi { position:absolute; border:1px dashed #ffd24a; pointer-events:none; display:none; z-index:2; }
+  #lv-rim { position:absolute; width:12px; height:12px; margin:-6px 0 0 -6px; border:2px solid #4af; border-radius:50%; pointer-events:none; display:none; z-index:2; }
+  #lv-ball { position:absolute; border:2px solid #ff3b3b; border-radius:50%; pointer-events:none; display:none; z-index:3; transform:translate(-50%,-50%); box-shadow:0 0 6px #ff3b3b; }
+  #lv-info { padding:6px 10px; font-family:'IBM Plex Mono',monospace; font-size:.72rem; color:var(--text); line-height:1.6; }
+  #clip-panel { display:none; position:fixed; inset:0; z-index:110; background:rgba(8,8,16,.9); backdrop-filter:blur(8px); align-items:center; justify-content:center; }
+  #clip-panel.open { display:flex; }
+  .cp-cv { width:100%; display:block; border:1px solid var(--border); border-radius:6px; cursor:crosshair; margin:6px 0; }
+  #cp-loupe { display:none; position:fixed; z-index:400; border:2px solid var(--accent); border-radius:8px; pointer-events:none; background:#000; width:192px; height:192px; }
+  #verify-panel { z-index:100; }
+  /* 검증 패널 */
+  #verify-panel {
+    display:none; position:fixed; inset:0; z-index:100;
+    background:rgba(8,8,16,.88); backdrop-filter:blur(8px);
+    align-items:center; justify-content:center;
+  }
+  #verify-panel.open { display:flex; }
+  #verify-panel.scanning { backdrop-filter:none; background:rgba(8,8,16,.7); }   /* 탐지 중에는 블러를 꺼서 프레임 처리가 느려지지 않게 */
+  .vp-note { font-size:.74rem; color:var(--muted); line-height:1.6; margin:6px 0; }
+  .vp-note b { color:var(--text); }
+  .vp-sum { display:flex; flex-wrap:wrap; gap:6px 16px; font-family:'IBM Plex Mono',monospace; font-size:.76rem; margin:8px 0; }
+  .vp-sum b { font-size:.95rem; }
+  .vp-sum .ok, .vp-tab td.ok { color:var(--made); }
+  .vp-sum .warn, .vp-tab td.warn { color:var(--accent); }
+  .vp-sum .bad, .vp-tab td.bad { color:var(--missed); }
+  .vp-tab { width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:.72rem; margin:6px 0; }
+  .vp-tab th { text-align:left; color:var(--muted); font-weight:600; padding:4px 6px; border-bottom:1px solid var(--border); }
+  .vp-tab td { padding:4px 6px; border-bottom:1px solid var(--border); }
+  .vp-truth { background:#1a1a28; border:1px solid var(--border); border-radius:5px; color:var(--text); font-family:inherit; font-size:.72rem; padding:2px 4px; }
+
+  /* 설정 패널 */
+  #settings-panel {
+    display:none; position:fixed; inset:0; z-index:100;
+    background:rgba(8,8,16,.88); backdrop-filter:blur(8px);
+    align-items:center; justify-content:center;
+  }
+  #settings-panel.open { display:flex; }
+  .sp-box {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; width:460px; max-height:80vh;
+    overflow-y:auto; padding:24px;
+  }
+  .sp-title {
+    font-family:'IBM Plex Mono',monospace; font-size:1rem; font-weight:700;
+    color:var(--accent); margin-bottom:18px;
+  }
+  .sp-sec-title {
+    font-family:'IBM Plex Mono',monospace; font-size:.68rem; font-weight:600;
+    color:var(--muted); letter-spacing:.1em; text-transform:uppercase;
+    margin:14px 0 8px;
+  }
+  .sp-row {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:7px 0; border-bottom:1px solid var(--border);
+  }
+  .sp-row:last-child { border-bottom:none; }
+  .sp-label { font-size:.82rem; color:var(--text); }
+  .sp-key-input {
+    background:#1a1a28; border:1px solid var(--border);
+    border-radius:6px; padding:4px 12px;
+    font-family:'IBM Plex Mono',monospace; font-size:.8rem; font-weight:700;
+    color:var(--accent); text-align:center; width:90px;
+    cursor:pointer; outline:none; caret-color:transparent;
+  }
+  .sp-key-input.listening {
+    border-color:var(--accent); color:#fff;
+    box-shadow:0 0 0 2px rgba(245,166,35,.25);
+  }
+  .sp-check { width:18px; height:18px; accent-color:var(--count); cursor:pointer; }
+  .sp-footer { display:flex; justify-content:flex-end; gap:10px; margin-top:18px; }
+  .sp-btn {
+    padding:6px 18px; border-radius:7px;
+    font-family:'IBM Plex Mono',monospace; font-size:.78rem; font-weight:700;
+    cursor:pointer; border:1px solid var(--border);
+    background:transparent; color:var(--muted); transition:all .15s;
+  }
+  .sp-btn.primary { background:var(--accent); border:none; color:#000; }
+  .sp-btn:hover { color:var(--text); }
+</style>
+</head>
+<body data-mode="shot">
+
+<!-- ── 업로드 화면 ── -->
+<div id="upload-screen">
+  <div class="upload-title">🏀 농구 슛 마커</div>
+  <div class="upload-sub">영상을 여러 개 한번에 올려서 이어서 마킹하세요</div>
+  <div class="upload-zone" id="drop-zone">
+    <input type="file" id="file-input" accept="video/*" multiple>
+    <div class="upload-icon">📂</div>
+    <div class="upload-label">클릭하거나 영상 파일을 드래그하세요 (여러 개 가능)</div>
+    <div class="upload-note">MP4 권장 · MOV · AVI · MKV · 여러 파일 동시 선택 가능</div>
+  </div>
+  <div id="file-queue"></div>
+  <button id="btn-start">▶ 마킹 시작</button>
+</div>
+
+<!-- ── 에디터 ── -->
+<div id="editor">
+
+  <div id="topbar">
+    <span class="tb-title">🏀 SHOT MARKER</span>
+    <span class="tb-sep">|</span>
+    <button id="btn-mode" title="모드 전환">🎯 슛 모드</button>
+    <span class="tb-sep">|</span>
+    <span class="tb-time" id="tb-time">0.0s / 0.0s</span>
+    <span class="tb-sep">|</span>
+    <span class="tb-speed" id="tb-speed">x1.0</span>
+    <span class="tb-sep">|</span>
+    <span class="tb-fps" id="tb-fps">FPS 측정중...</span>
+    <span class="tb-sep">|</span>
+    <span id="tb-filename" style="color:var(--muted); font-size:0.72rem; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+    <div class="tb-counts">
+      <span class="cnt-made"   id="cnt-made">🟢 성공: 0</span>
+      <span class="cnt-missed" id="cnt-missed">🔴 실패: 0</span>
+      <button id="btn-verify" style="background:none;border:1px solid var(--border);border-radius:5px;color:var(--in-pt);cursor:pointer;font-size:.7rem;font-family:'IBM Plex Mono',monospace;font-weight:700;padding:2px 8px;" title="자동 탐지 검증">🧪 검증</button>
+      <button id="btn-settings" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:1.1rem;padding:0 4px;" title="키보드 설정">⚙</button>
+    </div>
+  </div>
+
+  <!-- 영상 진행 표시 -->
+  <div id="video-progress-bar"></div>
+
+  <div id="video-wrap">
+    <div id="video-area">
+      <video id="video" preload="auto"></video>
+      <div id="flash"></div>
+      <div id="in-overlay">📍 IN점 지정됨 — A 또는 X 로 확정</div>
+      <div id="score-overlay"></div>
+      <div id="hoop-pick"></div>
+    </div>
+    <div id="marker-side">
+      <div id="marker-side-title">마커 목록</div>
+      <div id="marker-list">
+        <div class="mk-empty">아직 마커 없음<br>A=성공 X=실패</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="timeline-wrap">
+    <div id="timeline">
+      <div id="tl-progress"></div>
+      <div id="tl-cursor"></div>
+      <div id="tl-in-cursor"></div>
+      <div id="tl-tooltip"></div>
+    </div>
+  </div>
+
+  <div id="auto-bar"></div>
+
+  <div id="controls">
+    <div class="btn"><span id="lbl-play">Space</span> 재생/정지</div>
+    <div class="btn"><span id="lbl-back">J</span> -3초</div>
+    <div class="btn"><span id="lbl-fwd">L</span> +3초</div>
+    <div class="btn"><span id="lbl-slower">[</span><span id="lbl-faster">]</span> 배속</div>
+    <div class="sep"></div>
+    <div class="btn only-shot"><span id="lbl-in">I</span> IN점</div>
+    <div class="btn made"><span id="lbl-made">A</span> 성공</div>
+    <div class="btn missed"><span id="lbl-missed">X</span> 실패</div>
+    <div class="btn cancel"><span id="lbl-undo">Z</span> 취소</div>
+    <div class="btn cancel">Shift+<span id="lbl-redo">Z</span> 복구</div>
+    <div class="btn mode" id="btn-mode2"><span id="lbl-mode">M</span> 모드 전환</div>
+    <div class="btn auto" id="btn-auto"><span id="lbl-auto">G</span> 🤖 자동 탐지</div>
+    <div class="sep"></div>
+    <div class="btn prev" id="btn-prev-vid"><span id="lbl-prev">P</span> 이전 영상</div>
+    <div class="btn next" id="btn-next-vid"><span id="lbl-next">N</span> 다음 영상</div>
+    <div class="btn save" id="btn-save"><span id="lbl-save">S</span> EDL·자막 저장</div>
+  </div>
+
+</div>
+
+<!-- ── 탐지 미리보기 / 구간별 골대 ── -->
+<div id="live-box"><div id="lv-head"><span id="lv-title">🤖 탐지 중</span><button id="lv-min" title="영상 접기/펴기">▾</button></div><div id="lv-wrap"><div id="lv-roi"></div><div id="lv-rim"></div><div id="lv-ball"></div></div><div id="lv-info"></div></div>
+<div id="clip-panel"><div class="sp-box" id="cp-box" style="width:min(980px,96vw);max-height:92vh"></div></div>
+<canvas id="cp-loupe" width="192" height="192"></canvas>
+
+<!-- ── 검증 패널 ── -->
+<div id="verify-panel"><div class="sp-box" id="vp-box" style="width:min(900px,94vw);max-height:88vh"></div></div>
+
+<!-- ── 설정 패널 ── -->
+<div id="settings-panel">
+  <div class="sp-box">
+    <div class="sp-title">⚙ 키보드 커스텀</div>
+    <div class="sp-sec-title">재생 컨트롤</div>
+    <div class="sp-row"><div class="sp-label">재생 / 정지</div><input class="sp-key-input" data-action="play"   readonly value="Space"></div>
+    <div class="sp-row"><div class="sp-label">뒤로 3초</div>   <input class="sp-key-input" data-action="back"   readonly value="j"></div>
+    <div class="sp-row"><div class="sp-label">앞으로 3초</div> <input class="sp-key-input" data-action="fwd"    readonly value="l"></div>
+    <div class="sp-row"><div class="sp-label">배속 내리기</div><input class="sp-key-input" data-action="slower" readonly value="["></div>
+    <div class="sp-row"><div class="sp-label">배속 올리기</div><input class="sp-key-input" data-action="faster" readonly value="]"></div>
+    <div class="sp-sec-title">마킹</div>
+    <div class="sp-row"><div class="sp-label">IN점 지정</div>  <input class="sp-key-input" data-action="in"     readonly value="i"></div>
+    <div class="sp-row"><div class="sp-label">슛 성공</div>    <input class="sp-key-input" data-action="made"   readonly value="a"></div>
+    <div class="sp-row"><div class="sp-label">슛 실패</div>    <input class="sp-key-input" data-action="missed" readonly value="x"></div>
+    <div class="sp-row"><div class="sp-label">취소</div>       <input class="sp-key-input" data-action="undo"   readonly value="z"></div>
+    <div class="sp-row"><div class="sp-label">이전 영상</div>  <input class="sp-key-input" data-action="prev"   readonly value="p"></div>
+    <div class="sp-row"><div class="sp-label">다음 영상</div>  <input class="sp-key-input" data-action="next"   readonly value="n"></div>
+    <div class="sp-row"><div class="sp-label">EDL·자막 저장</div><input class="sp-key-input" data-action="save" readonly value="s"></div>
+    <div class="sp-sec-title">모드 전환</div>
+    <div class="sp-row"><div class="sp-label">모드 전환 (슛 ↔ 카운트)</div><input class="sp-key-input" data-action="mode"  readonly value="m"></div>
+    <div class="sp-sec-title">자동 탐지</div>
+    <div class="sp-row"><div class="sp-label">자동 탐지 열기 / 후보 확인</div><input class="sp-key-input" data-action="auto" readonly value="g"></div>
+    <div class="sp-sec-title">EDL 타임라인 FPS</div>
+    <div class="sp-row"><div class="sp-label">DaVinci 타임라인 FPS와 같게</div>
+      <select class="sp-num" id="opt-tlfps">
+        <option value="0">자동 (영상 FPS)</option>
+        <option value="24">24</option><option value="25">25</option><option value="30">30</option>
+        <option value="50">50</option><option value="60">60</option>
+      </select></div>
+    <div class="sp-sec-title">클립 뒤 여유 (EDL 저장 시 적용)</div>
+    <div class="sp-row"><div class="sp-label">성공 클립 뒤 여유 (초)</div><input type="number" class="sp-num" id="opt-post-made" min="0" max="10" step="0.1"></div>
+    <div class="sp-row"><div class="sp-label">실패 클립 뒤 여유 (초)</div><input type="number" class="sp-num" id="opt-post-missed" min="0" max="10" step="0.1"></div>
+    <div class="sp-sec-title">점수판 자막 (오른쪽 상단)</div>
+    <div class="sp-row"><div class="sp-label">점수판 표시 / 자막 저장</div><input type="checkbox" class="sp-check" id="opt-score-on"></div>
+    <div class="sp-row"><div class="sp-label">성공률 줄 표시</div><input type="checkbox" class="sp-check" id="opt-rate-on"></div>
+    <div class="sp-row"><div class="sp-label">목표 슛 수</div><input type="number" class="sp-num" id="opt-goal" min="1" step="1"></div>
+    <div class="sp-row"><div class="sp-label">시작 누적 (지금까지 넣은 수)</div><input type="number" class="sp-num" id="opt-start" min="0" step="1"></div>
+    <div class="sp-row"><div class="sp-label" id="opt-last-hint" style="font-size:.72rem;color:var(--muted)"></div><button class="sp-btn" id="opt-last-apply" style="padding:3px 10px;font-size:.7rem">지난 저장값 적용</button></div>
+    <div class="sp-footer">
+      <button class="sp-btn" id="sp-cancel">취소</button>
+      <button class="sp-btn primary" id="sp-save-settings">저장</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==========================================
+// 설정
+// ==========================================
+const PRE_SECONDS        = 3.0;
+const PRE_SECONDS_MISSED = 0.1;
+const SPEEDS  = [0.25, 0.5, 1.0, 1.5, 2.0, 4.0, 8.0];
+const SEEK_SEC = 3;
+const STD_FPS  = [24, 25, 30, 48, 50, 60, 120];
+
+// ==========================================
+// 상태
+// ==========================================
+
+// 영상 큐
+let fileQueue    = [];   // File 객체 배열
+let currentIdx   = 0;   // 현재 영상 인덱스
+
+// 마커: 영상별로 분리 저장
+// { fileName, madeEvents, missedEvents, allMarkers, fps, fpsOk, fpsDefault, duration }
+let videoData    = [];
+
+// 현재 영상 마커 (편의용 포인터)
+let madeEvents   = [];
+let missedEvents = [];
+let allMarkers   = [];
+let redoStack    = [];
+let countRedo    = [];   // 카운트 모드 복구용: 취소한 자막 기록(sub) 목록
+let seqCounter   = 0;    // 카운트 모드 입력 순서
+
+let speedIdx     = 2;
+let pendingIn    = null;
+let fileName     = '';
+let duration     = 0;
+let flashTimer   = null;
+
+let mode              = 'shot';   // 'shot'(슛 모드: 컷+자막) | 'count'(카운트 모드: 컷 없이 자막만)
+
+let loadToken = 0;
+let fpsToken  = 0;
+let curUrl    = null;
+
+// 점수판 설정 (다음에 열어도 유지되도록 localStorage)
+let scoreOn    = true;
+let scoreGoal  = 100000;   // 목표 슛 수
+let scoreStart = 0;        // 시작 누적 (오늘 시작 전까지 넣은 수)
+function lsGet(k) { try { return localStorage.getItem(k); } catch(e) { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, String(v)); } catch(e) {} }
+scoreOn    = lsGet('bm_scoreon') !== '0';
+let rateOn = lsGet('bm_rateon') !== '0';   // 점수판에 성공률 줄 표시
+scoreGoal  = Math.max(1, parseInt(lsGet('bm_goal'), 10)  || 100000);
+scoreStart = Math.max(0, parseInt(lsGet('bm_start'), 10) || 0);
+
+// 클립 뒤 여유 시간(초): A/X 누른 순간 이후로 더 이어붙임 (저장할 때만 적용)
+function numOr(v, d) { const n = parseFloat(v); return isFinite(n) ? n : d; }
+let postMade   = Math.min(10, Math.max(0, numOr(lsGet('bm_postmade'),   1.0)));
+let postMissed = Math.min(10, Math.max(0, numOr(lsGet('bm_postmissed'), 0)));
+
+// EDL 타임라인 FPS: 0이면 영상 FPS를 그대로 사용(자동). DaVinci 타임라인 FPS와 같게 맞추면 프레임 표기가 어긋나지 않음
+let tlFps = [0, 24, 25, 30, 50, 60].includes(parseInt(lsGet('bm_tlfps'), 10)) ? parseInt(lsGet('bm_tlfps'), 10) : 0;
+const edlFps = vd => tlFps || vd.fps;
+
+try {
+  if (sessionStorage.getItem('bm_mode') === 'count') mode = 'count';
+} catch(e) {}
+
+// ==========================================
+// 키 설정
+// ==========================================
+let KEYS = {
+  play:' ', back:'j', fwd:'l', slower:'[', faster:']',
+  in:'i', made:'a', missed:'x', undo:'z', prev:'p', next:'n', save:'s',
+  mode:'m', auto:'g',
+};
+
+const SHOT_ONLY_ACTIONS  = ['in'];   // 카운트 모드에서도 A/X(성공/실패)는 자막 기록용으로 사용 가능
+
+// 키 정규화: 한글 IME 상태나 Shift 상태에서도 같은 키로 인식
+function keyOf(e) {
+  const k = e.key;
+  if (k && k.length === 1 && /[A-Za-z]/.test(k)) return k.toLowerCase();
+  const code = e.code || '';
+  if (/^Key[A-Z]$/.test(code) &&
+      (!k || k === 'Process' || k === 'Unidentified' || (k.length === 1 && k.charCodeAt(0) > 127))) {
+    return code.slice(3).toLowerCase();
+  }
+  if (k && k.length === 1) return k.toLowerCase();
+  return k;
+}
+const fmtKey = k => k === ' ' ? 'Space' : String(k).toUpperCase();
+const MODIFIER_KEYS = ['Shift','Control','Alt','Meta','CapsLock','Dead','Tab','Escape'];
+
+const settPanel = document.getElementById('settings-panel');
+let _keyHandler = null;
+
+document.getElementById('btn-settings').addEventListener('click', e => { e.currentTarget.blur(); openSettings(); });
+document.getElementById('sp-cancel').addEventListener('click', closeSettings);
+document.getElementById('sp-save-settings').addEventListener('click', saveSettings);
+
+function openSettings() {
+  document.querySelectorAll('.sp-key-input').forEach(inp => {
+    delete inp.dataset.pending;
+    inp.value = fmtKey(KEYS[inp.dataset.action]);
+  });
+  document.getElementById('opt-tlfps').value       = String(tlFps);
+  document.getElementById('opt-post-made').value   = postMade;
+  document.getElementById('opt-post-missed').value = postMissed;
+  document.getElementById('opt-score-on').checked = scoreOn;
+  document.getElementById('opt-rate-on').checked  = rateOn;
+  document.getElementById('opt-goal').value  = scoreGoal;
+  document.getElementById('opt-start').value = scoreStart;
+  const last = parseInt(lsGet('bm_lasttotal'), 10);
+  const hint = document.getElementById('opt-last-hint');
+  const applyBtn = document.getElementById('opt-last-apply');
+  if (isFinite(last)) {
+    hint.textContent = `지난 저장 후 누적: ${last.toLocaleString('en-US')}`;
+    applyBtn.style.display = '';
+    applyBtn.onclick = () => { document.getElementById('opt-start').value = last; };
+  } else {
+    hint.textContent = '';
+    applyBtn.style.display = 'none';
+  }
+  settPanel.classList.add('open');
+  setupKeyListeners();
+}
+function closeSettings() {
+  document.querySelectorAll('.sp-key-input').forEach(i => {
+    i.classList.remove('listening');
+    delete i.dataset.pending;
+  });
+  if (_keyHandler) { document.removeEventListener('keydown', _keyHandler); _keyHandler = null; }
+  settPanel.classList.remove('open');
+}
+function setupKeyListeners() {
+  if (_keyHandler) document.removeEventListener('keydown', _keyHandler);
+  document.querySelectorAll('.sp-key-input').forEach(inp => {
+    inp.onclick = () => {
+      document.querySelectorAll('.sp-key-input').forEach(i => {
+        i.classList.remove('listening');
+        if (!i.dataset.pending) i.value = fmtKey(KEYS[i.dataset.action]);
+      });
+      inp.classList.add('listening');
+      inp.value = '키를 누르세요...';
+    };
+  });
+  _keyHandler = function(e) {
+    if (!settPanel.classList.contains('open')) return;
+    const listening = document.querySelector('.sp-key-input.listening');
+    if (!listening) return;
+    if (MODIFIER_KEYS.includes(e.key)) return;
+    e.preventDefault(); e.stopPropagation();
+    const k = keyOf(e);
+    listening.value = fmtKey(k);
+    listening.dataset.pending = k;
+    listening.classList.remove('listening');
+  };
+  document.addEventListener('keydown', _keyHandler);
+}
+function saveSettings() {
+  document.querySelectorAll('.sp-key-input').forEach(inp => {
+    if (inp.dataset.pending !== undefined) KEYS[inp.dataset.action] = inp.dataset.pending;
+    delete inp.dataset.pending;
+  });
+  scoreOn    = document.getElementById('opt-score-on').checked;
+  scoreGoal  = Math.max(1, parseInt(document.getElementById('opt-goal').value, 10)  || scoreGoal);
+  scoreStart = Math.max(0, parseInt(document.getElementById('opt-start').value, 10) || 0);
+  postMade   = Math.min(10, Math.max(0, numOr(document.getElementById('opt-post-made').value,   postMade)));
+  postMissed = Math.min(10, Math.max(0, numOr(document.getElementById('opt-post-missed').value, postMissed)));
+  tlFps = parseInt(document.getElementById('opt-tlfps').value, 10) || 0;
+  lsSet('bm_tlfps', tlFps);
+  lsSet('bm_postmade',   postMade);
+  lsSet('bm_postmissed', postMissed);
+  rateOn = document.getElementById('opt-rate-on').checked;
+  lsSet('bm_rateon', rateOn ? '1' : '0');
+  lsSet('bm_scoreon', scoreOn ? '1' : '0');
+  lsSet('bm_goal',    scoreGoal);
+  lsSet('bm_start',   scoreStart);
+  updateCtrlLabels();
+  closeSettings();
+  renderMarkers(); updateUI();
+  flash('✅ 설정 저장됨', 'var(--accent)');
+}
+function updateCtrlLabels() {
+  const set = (id, k) => { document.getElementById(id).textContent = fmtKey(k); };
+  set('lbl-play',   KEYS.play);
+  set('lbl-back',   KEYS.back);
+  set('lbl-fwd',    KEYS.fwd);
+  set('lbl-slower', KEYS.slower);
+  set('lbl-faster', KEYS.faster);
+  set('lbl-in',     KEYS.in);
+  set('lbl-made',   KEYS.made);
+  set('lbl-missed', KEYS.missed);
+  set('lbl-undo',   KEYS.undo);
+  set('lbl-redo',   KEYS.undo);
+  set('lbl-prev',   KEYS.prev);
+  set('lbl-next',   KEYS.next);
+  set('lbl-save',   KEYS.save);
+  set('lbl-mode',   KEYS.mode);
+  set('lbl-auto',   KEYS.auto);
+}
+
+// ==========================================
+// 모드 (슛 / 카운트 자막)
+// ==========================================
+function applyModeUI() {
+  document.body.dataset.mode = mode;
+  document.getElementById('btn-mode').textContent = mode === 'count' ? '🔢 카운트 모드' : '🎯 슛 모드';
+}
+function setMode(m, silent) {
+  mode = m;
+  pendingIn = null;
+  try { sessionStorage.setItem('bm_mode', mode); } catch(e) {}
+  applyModeUI();
+  renderMarkers(); updateUI();
+  if (!silent) {
+    flash(mode === 'count'
+      ? `🔢 카운트 모드 — ${fmtKey(KEYS.made)}/${fmtKey(KEYS.missed)}로 자막만 기록 (컷 없음)`
+      : `🎯 슛 모드 — ${fmtKey(KEYS.made)} 성공 / ${fmtKey(KEYS.missed)} 실패`,
+      mode === 'count' ? 'var(--count)' : 'var(--accent)');
+  }
+}
+function toggleMode() { setMode(mode === 'count' ? 'shot' : 'count'); }
+
+document.getElementById('btn-mode').addEventListener('click', e => { e.currentTarget.blur(); toggleMode(); });
+document.getElementById('btn-mode2').addEventListener('click', toggleMode);
+
+// ==========================================
+// 업로드 화면
+// ==========================================
+const video    = document.getElementById('video');
+const fileInput= document.getElementById('file-input');
+const dropZone = document.getElementById('drop-zone');
+const uploadScr= document.getElementById('upload-screen');
+const editor   = document.getElementById('editor');
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function handleFiles(files) {
+  fileQueue = Array.from(files).sort((a,b) => a.name.localeCompare(b.name));
+  renderFileQueue();
+  document.getElementById('btn-start').style.display = fileQueue.length ? 'block' : 'none';
+}
+
+function renderFileQueue() {
+  const el = document.getElementById('file-queue');
+  el.innerHTML = '';
+  fileQueue.forEach((f, i) => {
+    const div = document.createElement('div');
+    div.className   = 'fq-item';
+    div.id          = `fq-${i}`;
+    div.draggable   = true;
+    div.dataset.idx = i;
+    div.innerHTML   = `
+      <span class="fq-drag-handle" title="드래그로 순서 변경">⠿</span>
+      <span class="fq-num">${i+1}</span>
+      <span class="fq-name">${esc(f.name)}</span>
+      <span class="fq-status">대기중</span>
+    `;
+    // 드래그 이벤트
+    div.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', i);
+      div.classList.add('dragging');
+    });
+    div.addEventListener('dragend',  () => div.classList.remove('dragging'));
+    div.addEventListener('dragover', e => { e.preventDefault(); div.classList.add('drag-over'); });
+    div.addEventListener('dragleave',() => div.classList.remove('drag-over'));
+    div.addEventListener('drop', e => {
+      e.preventDefault();
+      div.classList.remove('drag-over');
+      const fromIdx = +e.dataTransfer.getData('text/plain');
+      const toIdx   = +div.dataset.idx;
+      if (fromIdx === toIdx) return;
+      // 순서 변경
+      const moved = fileQueue.splice(fromIdx, 1)[0];
+      fileQueue.splice(toIdx, 0, moved);
+      renderFileQueue();
+    });
+    el.appendChild(div);
+  });
+}
+
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  handleFiles(e.dataTransfer.files);
+});
+
+function newVideoEntry(name) {
+  return {
+    fileName: name, madeEvents:[], missedEvents:[], allMarkers:[],
+    fps:60, fpsOk:false, fpsDefault:false, duration:0,
+  };
+}
+
+document.getElementById('btn-start').addEventListener('click', () => {
+  if (!fileQueue.length) return;
+  // videoData 초기화 + 이전 세션 복구 (모든 영상 한꺼번에)
+  videoData = fileQueue.map(f => newVideoEntry(f.name));
+  const restored = restoreAllSessions();
+  currentIdx = 0;
+  uploadScr.style.display = 'none';
+  editor.style.display    = 'flex';
+  applyModeUI();
+  loadVideoAt(0);
+  if (restored) flash(`↪ 이전 작업 복구 (${restored}개)`, 'var(--in-pt)');
+});
+
+// ==========================================
+// 영상 로드
+// ==========================================
+function loadVideoAt(idx) {
+  if (idx >= fileQueue.length) {
+    // 모든 영상 완료 → 저장 안내
+    flash(`🎉 모든 영상 완료! ${fmtKey(KEYS.save)}로 저장하세요`, 'var(--accent)');
+    return;
+  }
+  if (idx < 0) return;
+  afterLoad = null;
+  currentIdx = idx;
+  const file = fileQueue[idx];
+  const vd   = videoData[idx];
+
+  // 현재 영상 데이터 포인터 연결
+  madeEvents   = vd.madeEvents;
+  missedEvents = vd.missedEvents;
+  allMarkers   = vd.allMarkers;
+  redoStack    = [];
+  countRedo    = [];
+  pendingIn    = null;
+  fileName     = file.name;
+
+  const myLoad = ++loadToken;
+  fpsToken++;                       // 이전 영상의 FPS 측정 중단
+
+  if (curUrl) { try { URL.revokeObjectURL(curUrl); } catch(e) {} }
+  curUrl = URL.createObjectURL(file);
+  video.src = curUrl;
+  video.load();
+
+  renderVideoProgress();
+
+  video.onloadedmetadata = () => {
+    if (myLoad !== loadToken) return;
+    duration    = video.duration;
+    vd.duration = duration;
+
+    document.getElementById('tb-filename').textContent = fileName;
+    video.playbackRate = SPEEDS[speedIdx];
+
+    startFpsMeasure(idx);
+
+    renderVideoProgress();
+    renderMarkers();
+    updateUI();
+    const p = video.play();
+    if (p && p.catch) p.catch(() => {});
+    if (afterLoad) { const f = afterLoad; afterLoad = null; try { f(); } catch(e) {} }   // 자동 탐지 후보 확인: 영상 이동 뒤 이어서 실행
+
+    // 파일 큐 상태 업데이트
+    document.querySelectorAll('.fq-item').forEach((el, i) => {
+      el.className = 'fq-item' + (i === idx ? ' active' : i < idx ? ' done' : '');
+      el.querySelector('.fq-status').textContent = i === idx ? '▶ 진행중' : i < idx ? '✅ 완료' : '대기중';
+    });
+    saveSession();
+  };
+}
+
+// ==========================================
+// FPS 측정 (프레임 시간 기준 — 재생 배속과 무관)
+// ==========================================
+function median(arr) {
+  const a = arr.slice().sort((x,y)=>x-y);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m-1] + a[m]) / 2;
+}
+function snapFps(f) {
+  let best = null;
+  STD_FPS.forEach(s => {
+    if (Math.abs(f - s) / s < 0.05 && (best === null || Math.abs(f - s) < Math.abs(f - best))) best = s;
+  });
+  return best !== null ? best : Math.round(f);
+}
+function showFps(vd) {
+  const el = document.getElementById('tb-fps');
+  if (!vd.fpsOk) { el.textContent = 'FPS 측정중...'; el.style.color = 'var(--muted)'; return; }
+  el.textContent = `${vd.fps}fps${vd.fpsDefault ? ' (기본값)' : ''}`;
+  el.style.color = vd.fpsDefault ? 'var(--accent)' : 'var(--in-pt)';
+}
+function startFpsMeasure(idx) {
+  const myToken = ++fpsToken;
+  const vd = videoData[idx];
+  const guess = () => fileName.toLowerCase().includes('30') ? 30 : 60;
+  const finish = (fps, isDefault) => {
+    if (myToken !== fpsToken) return;
+    vd.fps = fps; vd.fpsOk = true; vd.fpsDefault = isDefault;
+    showFps(vd);
+    saveSession();
+  };
+  showFps(vd);
+
+  if (!('requestVideoFrameCallback' in video)) { finish(guess(), true); return; }
+
+  const samples = [];
+  let last = null, calls = 0, defaulted = false;
+  const cb = (now, md) => {
+    if (myToken !== fpsToken) return;
+    calls++;
+    if (md && typeof md.presentedFrames === 'number') {
+      // 배속 1x 이하에서 연속 프레임 간격만 사용
+      if (last && md.presentedFrames - last.pf === 1 && video.playbackRate <= 1) {
+        const dt = md.mediaTime - last.mt;
+        if (dt > 0) {
+          const f = 1 / dt;
+          if (f >= 20 && f <= 130) samples.push(f);
+        }
+      }
+      last = { mt: md.mediaTime, pf: md.presentedFrames };
+    }
+    if (samples.length >= 12) { finish(snapFps(median(samples)), false); return; }
+    if (calls >= 400 && !defaulted) { defaulted = true; finish(guess(), true); }   // 못 구하면 기본값, 이후에도 계속 측정
+    video.requestVideoFrameCallback(cb);
+  };
+  video.requestVideoFrameCallback(cb);
+}
+
+// ==========================================
+// 이전/다음 영상으로 이동
+// ==========================================
+function goPrevVideo() {
+  if (currentIdx <= 0) { flash('첫 번째 영상이에요', '#888'); return; }
+  const target = currentIdx - 1;
+  loadVideoAt(target);
+  flash(`◀ ${target + 1}번째 영상`, 'var(--in-pt)');
+}
+
+function goNextVideo() {
+  if (currentIdx >= fileQueue.length - 1) {
+    flash(`마지막 영상이에요! ${fmtKey(KEYS.save)}로 저장하세요`, 'var(--accent)');
+    return;
+  }
+  const target = currentIdx + 1;
+  loadVideoAt(target);
+  flash(`▶ ${target + 1}번째 영상`, 'var(--in-pt)');
+}
+
+// ==========================================
+// 영상 진행 표시
+// ==========================================
+function renderVideoProgress() {
+  const bar = document.getElementById('video-progress-bar');
+  bar.innerHTML = '';
+  fileQueue.forEach((f, i) => {
+    if (i > 0) {
+      const arrow = document.createElement('span');
+      arrow.className = 'vp-arrow'; arrow.textContent = '▶';
+      bar.appendChild(arrow);
+    }
+    const item = document.createElement('div');
+    item.className = 'vp-item' + (i === currentIdx ? ' active' : i < currentIdx ? ' done' : '');
+    item.textContent = `${i+1}. ${f.name}`;
+    item.title = i !== currentIdx ? '클릭해서 이 영상으로 이동' : '';
+    // 다른 영상 클릭 시 해당 영상으로 이동
+    if (i !== currentIdx) {
+      item.addEventListener('click', () => loadVideoAt(i));
+    }
+    bar.appendChild(item);
+  });
+}
+
+// ==========================================
+// 진행바
+// ==========================================
+const timeline = document.getElementById('timeline');
+const tlProg   = document.getElementById('tl-progress');
+const tlCursor = document.getElementById('tl-cursor');
+const tlInCur  = document.getElementById('tl-in-cursor');
+const tlTooltip= document.getElementById('tl-tooltip');
+
+function pct(t) { return duration ? t/duration*100 : 0; }
+
+function fmtSec(s) {
+  s = Math.max(0, s);
+  const m = Math.floor(s/60);
+  return `${m}:${(s%60).toFixed(1).padStart(4,'0')}`;
+}
+
+function updateTimeline() {
+  const p = pct(video.currentTime);
+  tlProg.style.width  = p + '%';
+  tlCursor.style.left = p + '%';
+  tlInCur.style.display = pendingIn !== null ? 'block' : 'none';
+  if (pendingIn !== null) tlInCur.style.left = pct(pendingIn) + '%';
+}
+
+// ── 번호 계산 ──
+// 앞 영상들의 성공 슛 수 (SRT/자막 번호의 시작점)
+function madeBase(idx) {
+  let n = 0;
+  for (let i = 0; i < idx; i++) n += videoData[i].madeEvents.length;
+  return n;
+}
+
+// ── 점수판 (남은 / 누적 / 성공 / 실패) ──
+// 앞 영상들의 성공·실패 수
+function prevTotals(idx) {
+  let m = 0, x = 0;
+  for (let i = 0; i < idx; i++) {
+    videoData[i].allMarkers.forEach(mk => { if (mk.type === 'made') m++; else x++; });   // 슛 모드 + 카운트 모드 기록 모두 포함
+  }
+  return { m, x };
+}
+function scoreLines(made, missed) {
+  const f = n => n.toLocaleString('en-US');
+  const total = scoreStart + made;
+  const remain = Math.max(0, scoreGoal - total);   // 실패는 남은 수에 영향 없음
+  let s = `남은 ${f(remain)}\n누적 ${f(total)}\n성공 ${f(made)}\n실패 ${f(missed)}`;
+  if (rateOn) {
+    // 성공률 = 성공 / (성공 + 실패), 이번에 기록한 슛 기준 (시작 누적은 제외)
+    const att = made + missed;
+    s += `\n성공률 ${att ? (made / att * 100).toFixed(1) + '%' : '-'}`;
+  }
+  return s;
+}
+// 현재 시각까지 누른 A/X 기준 점수판
+function scoreCounts(idx, t) {
+  const b = prevTotals(idx);
+  let m = b.m, x = b.x;
+  videoData[idx].allMarkers.forEach(mk => {
+    if (mk.out <= t + 1e-6) { if (mk.type === 'made') m++; else x++; }
+  });
+  return { m, x };
+}
+function scoreAtTime(idx, t) {
+  const c = scoreCounts(idx, t);
+  return scoreLines(c.m, c.x);
+}
+
+// 슛 마커 → madeEvents / missedEvents 재구성 (카운트 모드 자막 전용 마커(sub)는 컷/EDL에서 제외)
+function syncShots() {
+  madeEvents   = allMarkers.filter(m=>m.type==='made'   && !m.sub).map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
+  missedEvents = allMarkers.filter(m=>m.type==='missed' && !m.sub).map(m=>({in:m.in,out:m.out,fileName:m.fileName}));
+  const vd = videoData[currentIdx];
+  vd.madeEvents   = madeEvents;
+  vd.missedEvents = missedEvents;
+  vd.allMarkers   = allMarkers;
+}
+
+function renderMarkers() {
+  document.querySelectorAll('.tl-marker, .tl-sub-tick').forEach(el => el.remove());
+  const shots = allMarkers.filter(m => !m.sub);
+  shots.forEach((m, i) => {
+    const el = document.createElement('div');
+    el.className = 'tl-marker only-shot' + (i === shots.length-1 ? ' latest' : '');
+    el.style.left       = pct(m.in) + '%';
+    el.style.width      = Math.max(pct(m.out - m.in), 0.3) + '%';
+    el.style.background = m.review ? 'var(--accent)' : m.type === 'made' ? 'var(--made)' : 'var(--missed)';
+    timeline.appendChild(el);
+  });
+  allMarkers.filter(m => m.sub).forEach(m => {
+    const el = document.createElement('div');
+    el.className = 'tl-sub-tick only-count';
+    el.style.left       = pct(m.out) + '%';
+    el.style.background = m.review ? 'var(--accent)' : m.type === 'made' ? 'var(--made)' : 'var(--missed)';
+    timeline.appendChild(el);
+  });
+
+  document.getElementById('marker-side-title').textContent = mode === 'count' ? '자막 목록' : '마커 목록';
+  const list = document.getElementById('marker-list');
+  list.innerHTML = '';
+  if (mode === 'count') renderCountList(list); else renderShotList(list);
+  const latest = list.querySelector('.latest');
+  if (latest && latest.scrollIntoView) latest.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function renderShotList(list) {
+  // 카운트 모드에서 기록한 자막 전용 마커(sub)는 슛 목록에 넣지 않음
+  const shots = allMarkers.filter(m => !m.sub);
+  if (!shots.length) {
+    list.innerHTML = `<div class="mk-empty">아직 마커 없음<br>${fmtKey(KEYS.made)}=성공 ${fmtKey(KEYS.missed)}=실패</div>`;
+    return;
+  }
+  const base = madeBase(currentIdx);
+  let madeNo = base;
+  shots.forEach((m, i) => {
+    const el = document.createElement('div');
+    el.className = 'mk-item ' + m.type + (m.review ? ' review' : '') + (reviewCur() === m ? ' cur' : '') + (i === shots.length-1 ? ' latest' : '');
+    const prevMade = i > 0 && shots[i-1].type === 'made';
+    const nextMade = i < shots.length-1 && shots[i+1].type === 'made';
+    const chained  = m.type === 'made' && (prevMade || nextMade);
+    const icon     = m.review ? '❓' : chained ? '🔗' : m.type === 'made' ? '🟢' : '🔴';
+    let tag = '';
+    if (m.type === 'made') { madeNo++; tag = ` <span class="mk-no">#${madeNo}</span>`; }
+    el.innerHTML = `
+      <div class="mk-label">${icon} ${i+1}${tag}<br>${fmtSec(m.in)}→${fmtSec(m.out)}</div>
+      <button class="mk-del">✕</button>
+    `;
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('mk-del')) return;
+      video.currentTime = m.in; video.pause();
+    });
+    el.querySelector('.mk-del').addEventListener('click', () => {
+      const k = allMarkers.indexOf(m);
+      if (k >= 0) allMarkers.splice(k, 1);
+      syncShots();
+      renderMarkers(); updateUI(); saveSession();
+      flash('↩ 삭제됨', '#aaa');
+    });
+    list.appendChild(el);
+  });
+}
+
+// 카운트 모드 목록: A/X 자막 기록 + C 카운트
+function renderCountList(list) {
+  const subs = allMarkers.filter(m => m.sub).sort((a, b) => a.out - b.out);
+  if (!subs.length) {
+    list.innerHTML = `<div class="mk-empty">아직 자막 없음<br>${fmtKey(KEYS.made)}=성공 ${fmtKey(KEYS.missed)}=실패</div>`;
+    return;
+  }
+  const lastSub = findLastSub();
+  subs.forEach(m => {
+    const c = scoreCounts(currentIdx, m.out);
+    const el = document.createElement('div');
+    el.className = 'mk-item ' + m.type + (m.review ? ' review' : '') + (reviewCur() === m ? ' cur' : '') + (m === lastSub ? ' latest' : '');
+    el.innerHTML = `
+      <div class="mk-label">${m.review ? '❓' : m.type === 'made' ? '🟢' : '🔴'} ${m.type === 'made' ? '누적 ' + (scoreStart + c.m).toLocaleString('en-US') : '실패 ' + c.x}<br>${fmtSec(m.out)}</div>
+      <button class="mk-del">✕</button>
+    `;
+    el.addEventListener('click', e => {
+      if (e.target.classList.contains('mk-del')) return;
+      video.currentTime = m.out; video.pause();
+    });
+    el.querySelector('.mk-del').addEventListener('click', () => {
+      const k = allMarkers.indexOf(m);
+      if (k >= 0) allMarkers.splice(k, 1);
+      syncShots();
+      renderMarkers(); updateUI(); saveSession();
+      flash('↩ 삭제됨', '#aaa');
+    });
+    list.appendChild(el);
+  });
+}
+
+// 진행바 드래그
+let tlDrag = false;
+function seekMouse(e) {
+  const r = timeline.getBoundingClientRect();
+  video.currentTime = Math.max(0, Math.min(1, (e.clientX-r.left)/r.width)) * duration;
+}
+timeline.addEventListener('mousedown', e => { tlDrag=true; seekMouse(e); video.pause(); });
+document.addEventListener('mousemove', e => {
+  if (tlDrag) seekMouse(e);
+  const r = timeline.getBoundingClientRect();
+  if (e.clientY >= r.top-12 && e.clientY <= r.bottom+12) {
+    const ratio = Math.max(0, Math.min(1, (e.clientX-r.left)/r.width));
+    tlTooltip.style.display = 'block';
+    tlTooltip.style.left    = (e.clientX-r.left) + 'px';
+    tlTooltip.textContent   = fmtSec(ratio*duration);
+  } else { tlTooltip.style.display='none'; }
+});
+document.addEventListener('mouseup', () => { tlDrag=false; });
+
+// ==========================================
+// UI 업데이트
+// ==========================================
+function updateUI() {
+  document.getElementById('tb-time').textContent =
+    `${fmtSec(video.currentTime)} / ${fmtSec(duration)}`;
+  document.getElementById('tb-speed').textContent =
+    `x${SPEEDS[speedIdx].toFixed(2)}`;
+  // 전체 마커 수 집계
+  const totalMade   = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.type==='made').length, 0);     // 슛 모드 + 카운트 모드 합산
+  const totalMissed = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.type==='missed').length, 0);
+  document.getElementById('cnt-made').textContent   = `🟢 성공: ${totalMade}`;
+  document.getElementById('cnt-missed').textContent = `🔴 실패: ${totalMissed}`;
+  document.getElementById('in-overlay').style.display = (mode === 'shot' && pendingIn !== null) ? 'block' : 'none';
+
+  // 점수판 미리보기 (오른쪽 상단)
+  const so = document.getElementById('score-overlay');
+  if (scoreOn && videoData.length) { so.textContent = scoreAtTime(currentIdx, video.currentTime); so.style.display = 'block'; }
+  else so.style.display = 'none';
+
+  updateTimeline();
+}
+
+video.addEventListener('timeupdate', updateUI);
+
+// ==========================================
+// 플래시 메시지
+// ==========================================
+function flash(msg, color) {
+  const el = document.getElementById('flash');
+  el.textContent = msg; el.style.color = color||'#fff';
+  el.classList.add('show');
+  if (flashTimer) clearTimeout(flashTimer);
+  flashTimer = setTimeout(()=>el.classList.remove('show'), 900);
+}
+
+// ==========================================
+// 세션 저장/복구 (모든 영상)
+// ==========================================
+function saveSession() {
+  try {
+    sessionStorage.setItem('bm_videodata', JSON.stringify(videoData));
+    sessionStorage.setItem('bm_filenames', JSON.stringify(fileQueue.map(f=>f.name)));
+    sessionStorage.setItem('bm_idx',       String(currentIdx));
+  } catch(e) {}
+}
+
+// 시작할 때 한 번에 모든 영상의 마커를 복구 (파일 이름이 같은 영상끼리 매칭)
+function restoreAllSessions() {
+  let restored = 0;
+  try {
+    const saved = JSON.parse(sessionStorage.getItem('bm_videodata') || '[]');
+    if (!Array.isArray(saved)) return 0;
+    videoData.forEach(vd => {
+      const s = saved.find(x => x && x.fileName === vd.fileName);
+      if (!s) return;
+      const fix = a => (Array.isArray(a) ? a : [])
+        .filter(e => e && isFinite(e.in) && isFinite(e.out))
+        .map(e => ({ ...e, fileName: e.fileName || vd.fileName }));
+      vd.madeEvents   = fix(s.madeEvents);
+      vd.missedEvents = fix(s.missedEvents);
+      vd.allMarkers   = fix(s.allMarkers);
+      if (s.fpsOk && s.fps && !s.fpsDefault) { vd.fps = s.fps; vd.fpsOk = true; vd.fpsDefault = false; }
+      if (s.duration) vd.duration = s.duration;
+      if (s.hoop && isFinite(s.hoop.x) && isFinite(s.hoop.y) && isFinite(s.hoop.w)) vd.hoop = s.hoop;
+      if (Array.isArray(s.clips) && s.clips.every(c => c && isFinite(c.t0) && isFinite(c.t1) && isFinite(c.g))) {
+        vd.clips = s.clips.map(c => ({ t0: c.t0, t1: c.t1, g: c.g }));
+        vd.hoops = (Array.isArray(s.hoops) ? s.hoops : []).map(h => h && isFinite(h.x) && isFinite(h.y) && isFinite(h.w) ? h : null);
+      }
+      restored += vd.madeEvents.length + vd.missedEvents.length
+                + vd.allMarkers.filter(m => m.sub).length;
+      vd.allMarkers.forEach(m => { if (m.seq > seqCounter) seqCounter = m.seq; });
+    });
+  } catch(e) {}
+  return restored;
+}
+
+// ==========================================
+// 마커 추가
+// ==========================================
+function addMarker(type) {
+  const out = video.currentTime;
+  const pre = type === 'made' ? PRE_SECONDS : PRE_SECONDS_MISSED;
+  let in_;
+  const shotList   = allMarkers.filter(m => !m.sub);   // 카운트 모드 자막 기록은 연속 성공 판정에서 제외
+  const lastMarker = shotList.length > 0 ? shotList[shotList.length-1] : null;
+
+  // 연속 성공: 직전 마커가 같은 파일의 성공 마커일 때만
+  if (type === 'made' && lastMarker && lastMarker.type === 'made'
+      && lastMarker.fileName === fileName && pendingIn === null && lastMarker.out < out) {
+    in_ = lastMarker.out;
+    flash(`🟢🟢 연속 성공!  ${fmtSec(in_)} ~ ${fmtSec(out)}`, 'var(--made)');
+  } else {
+    in_ = pendingIn !== null ? pendingIn : Math.max(0, out - pre);
+    if (!(in_ < out)) in_ = Math.max(0, out - pre);   // IN점이 OUT보다 뒤면 무시
+    flash(type==='made'
+      ? `🟢 성공  ${fmtSec(in_)} ~ ${fmtSec(out)}`
+      : `🔴 실패  ${fmtSec(in_)} ~ ${fmtSec(out)}`,
+      type==='made' ? 'var(--made)' : 'var(--missed)');
+  }
+  pendingIn = null;
+
+  allMarkers.push({ type, in:in_, out, fileName });
+  redoStack = [];
+  syncShots();
+
+  renderMarkers(); updateUI(); saveSession();
+}
+
+// ==========================================
+// 카운트 모드: A/X 자막 기록 (컷/EDL 없이 점수판 자막만)
+// ==========================================
+function findLastSub() {
+  for (let i = allMarkers.length - 1; i >= 0; i--) if (allMarkers[i].sub) return allMarkers[i];
+  return null;
+}
+function addSub(type) {
+  const t = video.currentTime;
+  if (allMarkers.some(m => m.sub && m.type === type && Math.abs(m.out - t) < 0.05)) {
+    flash('이미 이 위치에 기록이 있어요', '#888');
+    return;
+  }
+  allMarkers.push({ type, in: t, out: t, fileName, sub: true, seq: ++seqCounter });
+  countRedo = [];
+  syncShots();
+  const c = scoreCounts(currentIdx, t);
+  flash(type === 'made'
+    ? `🟢 성공  누적 ${(scoreStart + c.m).toLocaleString('en-US')}`
+    : `🔴 실패  ${c.x}`,
+    type === 'made' ? 'var(--made)' : 'var(--missed)');
+  renderMarkers(); updateUI(); saveSession();
+}
+
+// ==========================================
+// 취소 / 복구
+// ==========================================
+function doUndo() {
+  if (mode === 'count') {
+    // 카운트 모드: 가장 최근에 기록한 A/X 자막 취소
+    const lastSub = findLastSub();
+    if (!lastSub) { flash('취소할 항목 없음','#888'); return; }
+    allMarkers.splice(allMarkers.indexOf(lastSub), 1);
+    countRedo.push(lastSub);
+    syncShots();
+  } else {
+    // 슛 모드: 카운트 모드에서 기록한 자막 전용 마커는 건드리지 않음
+    let i = allMarkers.length - 1;
+    while (i >= 0 && allMarkers[i].sub) i--;
+    if (i < 0) { flash('취소할 마커 없음','#888'); return; }
+    redoStack.push(allMarkers.splice(i, 1)[0]);
+    pendingIn = null;
+    syncShots();
+  }
+  renderMarkers(); updateUI(); saveSession();
+  flash('↩ 취소됨','#aaa');
+}
+function doRedo() {
+  if (mode === 'count') {
+    if (!countRedo.length) { flash('복구할 항목 없음','#888'); return; }
+    allMarkers.push(countRedo.pop());
+    syncShots();
+  } else {
+    if (!redoStack.length) { flash('복구할 항목 없음','#888'); return; }
+    allMarkers.push(redoStack.pop());
+    syncShots();
+  }
+  renderMarkers(); updateUI(); saveSession();
+  flash('↪ 복구됨','var(--in-pt)');
+}
+
+// ==========================================
+// 키보드
+// ==========================================
+function actionFor(k) {
+  const acts = Object.keys(KEYS).filter(a => KEYS[a] === k);
+  if (!acts.length) return null;
+  const blocked = mode === 'count' ? SHOT_ONLY_ACTIONS : [];
+  return acts.find(a => !blocked.includes(a)) || acts[0];
+}
+
+document.addEventListener('keydown', e => {
+  if (uploadScr.style.display !== 'none') return;
+  if (settPanel.classList.contains('open')) return;
+  if (verPanel.classList.contains('open') || cpPanel.classList.contains('open')) return;
+  if (['INPUT','TEXTAREA','SELECT'].includes(e.target.tagName)) return;
+
+  if (handleAutoKey(e)) return;   // 자동 탐지: 골대 지정 취소 / 후보 확인 키
+
+  const act = actionFor(keyOf(e));
+  if (!act) return;
+  e.preventDefault();
+
+  // 꾹 누를 때 반복 입력 방지 (마킹/저장/이동류)
+  if (e.repeat && ['in','made','missed','mode','save','prev','next','auto'].includes(act)) return;
+
+  // 현재 모드에서 쓸 수 없는 키
+  if (mode === 'count' && SHOT_ONLY_ACTIONS.includes(act)) {
+    flash(`🔢 카운트 모드에는 IN점이 없어요 — ${fmtKey(KEYS.mode)}로 슛 모드 전환`, 'var(--count)'); return;
+  }
+
+  switch (act) {
+    case 'play':   video.paused ? video.play() : video.pause(); break;
+    case 'back':   video.currentTime = Math.max(0, video.currentTime - SEEK_SEC); flash(`◀ -${SEEK_SEC}s`,'var(--muted)'); break;
+    case 'fwd':    video.currentTime = Math.min(duration, video.currentTime + SEEK_SEC); flash(`▶ +${SEEK_SEC}s`,'var(--muted)'); break;
+    case 'faster': speedIdx = Math.min(SPEEDS.length-1, speedIdx+1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); break;
+    case 'slower': speedIdx = Math.max(0, speedIdx-1); video.playbackRate = SPEEDS[speedIdx]; flash(`x${SPEEDS[speedIdx].toFixed(2)}`,'var(--in-pt)'); updateUI(); break;
+    case 'in':     pendingIn = video.currentTime; flash(`📍 IN  ${fmtSec(pendingIn)}`,'var(--in-pt)'); updateUI(); break;
+    case 'made':   mode === 'count' ? addSub('made')   : addMarker('made');   break;
+    case 'missed': mode === 'count' ? addSub('missed') : addMarker('missed'); break;
+    case 'mode':   toggleMode(); break;
+    case 'auto':   openAuto(); break;
+    case 'prev':   goPrevVideo(); break;
+    case 'next':   goNextVideo(); break;
+    case 'save':   saveEDL(); break;
+    case 'undo':   e.shiftKey ? doRedo() : doUndo(); break;
+  }
+});
+
+document.getElementById('btn-prev-vid').addEventListener('click', goPrevVideo);
+document.getElementById('btn-next-vid').addEventListener('click', goNextVideo);
+document.getElementById('btn-save').addEventListener('click', saveEDL);
+document.getElementById('btn-auto').addEventListener('click', openAuto);
+
+// ==========================================
+// EDL / SRT 저장
+// ==========================================
+function toTC(sec, fps) {
+  sec = Math.max(0, sec);
+  const totalF = Math.round(sec * fps);
+  const fpsR   = Math.round(fps);
+  const f = totalF % fpsR;
+  const s = Math.floor(totalF/fpsR) % 60;
+  const m = Math.floor(totalF/fpsR/60) % 60;
+  const h = Math.floor(totalF/fpsR/3600);
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;
+}
+
+function buildEDL(events, title, fps, clipFileName) {
+  let lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
+  let recIn = 0;
+  events.forEach((ev, i) => {
+    const dur = ev.out - ev.in;
+    lines.push(
+      `${String(i+1).padStart(3,'0')}  AX  V  C  ` +
+      `${toTC(ev.in, fps)} ${toTC(ev.out, fps)} ` +
+      `${toTC(recIn, fps)} ${toTC(recIn+dur, fps)}`
+    );
+    lines.push(`* FROM CLIP NAME: ${ev.fileName || clipFileName}`);
+    lines.push('');
+    recIn += dur;
+  });
+  return lines.join('\n');
+}
+
+// 저장용 이벤트: OUT 뒤에 여유 시간을 붙임.
+// - 연속 성공(다음 클립 IN == 이 클립 OUT)은 이어져 있으므로 늘리지 않음 (프레임 중복 방지)
+// - 같은 영상의 다음 클립 IN을 넘지 않도록 제한, 영상 길이도 넘지 않음
+function exportEvents(vd, key) {
+  const post = key === 'madeEvents' ? postMade : postMissed;
+  const evs  = vd[key];
+  return evs.map((ev, i) => {
+    let out = ev.out;
+    const nxt = evs[i+1];
+    const chained = nxt && nxt.fileName === ev.fileName && nxt.in === ev.out;
+    if (!chained && post > 0) {
+      out = ev.out + post;
+      if (nxt && nxt.fileName === ev.fileName && nxt.in > ev.out) out = Math.min(out, nxt.in);
+      if (vd.duration && vd.duration > ev.out) out = Math.min(out, vd.duration);
+    }
+    return { in: ev.in, out, fileName: ev.fileName };
+  });
+}
+
+// 여러 영상: 영상 순서대로 이어붙인 EDL (영상별 fps 사용)
+function buildMergedEDL(key, title) {
+  let lines = [`TITLE: ${title}`, 'FCM: NON-DROP FRAME', ''];
+  let recIn = 0, n = 0;
+  videoData.forEach(vd => {
+    const fps = edlFps(vd);
+    exportEvents(vd, key).forEach(ev => {
+      n++;
+      const dur = ev.out - ev.in;
+      lines.push(
+        `${String(n).padStart(3,'0')}  AX  V  C  ` +
+        `${toTC(ev.in, fps)} ${toTC(ev.out, fps)} ` +
+        `${toTC(recIn, fps)} ${toTC(recIn+dur, fps)}`
+      );
+      lines.push(`* FROM CLIP NAME: ${ev.fileName || vd.fileName}`);
+      lines.push('');
+      recIn += dur;
+    });
+  });
+  return lines.join('\n');
+}
+
+// ── SRT ──
+function srtTime(sec) {
+  const total = Math.max(0, Math.round(sec * 1000));
+  const ms = total % 1000;
+  const s  = Math.floor(total / 1000) % 60;
+  const m  = Math.floor(total / 60000) % 60;
+  const h  = Math.floor(total / 3600000);
+  const p2 = n => String(n).padStart(2,'0');
+  return `${p2(h)}:${p2(m)}:${p2(s)},${String(ms).padStart(3,'0')}`;
+}
+function cuesToSRT(cues) {
+  return cues.map((c, i) => `${i+1}\n${srtTime(c.s)} --> ${srtTime(c.e)}\n${c.text}\n`).join('\n');
+}
+
+// 성공 슛 하이라이트 타임라인용: EDL과 같은 위치에 1, 2, 3 ... 번호 자막
+function buildMadeSRT() {
+  const cues = [];
+  let n = 0, rec = 0;
+  videoData.forEach(vd => {
+    const fps = edlFps(vd) || 60;
+    exportEvents(vd, 'madeEvents').forEach(ev => {
+      n++;
+      const dur = ev.out - ev.in;
+      const s = Math.round(rec * fps) / fps;
+      const e = Math.round((rec + dur) * fps) / fps;
+      rec += dur;
+      if (e - s > 0.0005) cues.push({ s, e, text: String(n) });
+    });
+  });
+  return { content: cuesToSRT(cues), count: cues.length };
+}
+
+// 점수판 자막: 영상 원본 시간 기준. A/X를 누르는 순간마다 숫자가 바뀌고 다음 입력(또는 영상 끝)까지 유지
+function buildScoreSRT(idx) {
+  const vd = videoData[idx];
+  const b  = prevTotals(idx);
+  let m = b.m, x = b.x, t0 = 0;
+  const cues = [];
+  const push = (s, e, text) => { if (e - s >= 0.02) cues.push({ s, e, text }); };
+  vd.allMarkers.slice().sort((a, c) => a.out - c.out).forEach(ev => {
+    push(t0, ev.out, scoreLines(m, x));
+    if (ev.type === 'made') m++; else x++;
+    t0 = ev.out;
+  });
+  push(t0, (vd.duration && vd.duration > t0) ? vd.duration : t0 + 3, scoreLines(m, x));
+  return { content: cuesToSRT(cues), count: cues.length };
+}
+
+function downloadText(content, name) {
+  const a = document.createElement('a');
+  const url = URL.createObjectURL(new Blob([content],{type:'text/plain;charset=utf-8'}));
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { a.remove(); URL.revokeObjectURL(url); }, 10000);
+}
+
+function safeName(s) {
+  return String(s).replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|]/g, '_');
+}
+
+function saveEDL() {
+  const totalMade   = videoData.reduce((s,v)=>s+v.madeEvents.length, 0);
+  const totalMissed = videoData.reduce((s,v)=>s+v.missedEvents.length, 0);
+  // totalMade/totalMissed = 컷(EDL)에 들어가는 슛 모드 마커, score* = 카운트 모드 자막 기록까지 합친 점수판 기준
+  const scoreMade   = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.type==='made').length, 0);
+  const scoreMissed = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.type==='missed').length, 0);
+  if (!scoreMade && !scoreMissed) { flash('마커가 없습니다!','#f88'); return; }
+
+  // 슛 마커가 있는 영상은 FPS가 측정되어 있어야 함 (컷/EDL이 있을 때만)
+  const waiting = videoData.find(v => (v.madeEvents.length || v.missedEvents.length) && !v.fpsOk);
+  if (waiting) { flash('⏳ FPS 측정 중... (영상을 재생해 주세요)','#f88'); return; }
+  const usedDefault = videoData.some(v => (v.madeEvents.length || v.missedEvents.length) && v.fpsDefault);
+
+  const now = new Date();
+  const dateStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}${String(now.getDate()).padStart(2,'0')}_${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+
+  const files = [];   // { name, content }
+
+  // 영상이 1개면 기존처럼, 여러 개면 합쳐서 하나로
+  if (fileQueue.length === 1) {
+    const vd  = videoData[0];
+    const fps = edlFps(vd);
+    if (vd.madeEvents.length)   files.push({ name:`${dateStr}_shots_made.edl`,   content:buildEDL(exportEvents(vd,'madeEvents'),   'SHOTS_MADE',   fps, vd.fileName) });
+    if (vd.missedEvents.length) files.push({ name:`${dateStr}_shots_missed.edl`, content:buildEDL(exportEvents(vd,'missedEvents'), 'SHOTS_MISSED', fps, vd.fileName) });
+  } else {
+    if (totalMade)   files.push({ name:`${dateStr}_shots_made.edl`,   content:buildMergedEDL('madeEvents',   'SHOTS_MADE') });
+    if (totalMissed) files.push({ name:`${dateStr}_shots_missed.edl`, content:buildMergedEDL('missedEvents', 'SHOTS_MISSED') });
+  }
+
+  // 성공 슛 번호 자막 (1, 2, 3 ...)
+  if (totalMade) {
+    const srt = buildMadeSRT();
+    files.push({ name:`${dateStr}_shots_made.srt`, content:srt.content });
+  }
+
+  // 점수판 자막 (영상별, 앞 영상 수치 이어받음)
+  if (scoreOn && (scoreMade + scoreMissed)) {
+    videoData.forEach((vd, i) => {
+      const srt = buildScoreSRT(i);
+      if (!srt.count) return;
+      const idxStr = fileQueue.length > 1 ? `${String(i+1).padStart(2,'0')}_` : '';
+      files.push({ name:`${dateStr}_${idxStr}${safeName(vd.fileName)}_score.srt`, content:srt.content });
+    });
+  }
+  if (scoreMade || scoreMissed) lsSet('bm_lasttotal', scoreStart + scoreMade);   // 다음에 이어서 시작할 누적값
+
+  if (!files.length) { flash('저장할 내용이 없습니다!','#f88'); return; }
+  files.forEach((f, i) => setTimeout(() => downloadText(f.content, f.name), i * 350));
+
+  let msg;
+  if (scoreMade + scoreMissed) {
+    const pctV = (scoreMade/(scoreMade+scoreMissed)*100).toFixed(1);
+    msg = `💾 저장완료  성공률 ${pctV}%  누적 ${(scoreStart + scoreMade).toLocaleString('en-US')}  (파일 ${files.length}개${(totalMade + totalMissed) ? '' : ', 자막만'})`;
+  } else {
+    msg = `💾 저장완료 (파일 ${files.length}개)`;
+  }
+  if (usedDefault) msg += '  ⚠ FPS 기본값 사용';
+  const pendingReview = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.review && m.type === 'made').length, 0);
+  const pendingWeak = videoData.reduce((s,v)=>s+v.allMarkers.filter(m=>m.review && m.weak).length, 0);
+  if (pendingReview) msg += `  ⚠ 확인 안 한 후보 ${pendingReview}개(성공으로 저장됨)`;
+  if (pendingWeak) msg += `  ⚠ 슛 아닐 수도 있는 의심 ${pendingWeak}개 확인 안 함`;
+  flash(msg, 'var(--accent)');
+  console.log(`💾 저장 | 컷 성공:${totalMade} 컷 실패:${totalMissed} 점수판 성공:${scoreMade} 실패:${scoreMissed} 파일:${files.map(f=>f.name).join(', ')}`);
+}
+
+// ==========================================
+// 🤖 자동 탐지 — 골대 주변 공의 움직임으로 슛 시점을 찾고, 림 아래로 공이 지나간 슛은 "성공 후보"로 표시
+//   · 림 아래로 지나가지 않은 슛 → 실패로 자동 확정
+//   · 림 아래로 지나간 슛 → ❓성공 후보 (림에 맞고 그물 옆으로 떨어진 공도 섞일 수 있어 직접 확인)
+// ==========================================
+const AD = {
+  // 림 중심 기준 상대 좌표 (림 폭 65px로 정규화한 크기)
+  ARR:   { x0:-90, x1:90, y0:-110, y1:12, minN:35 },   // 림 위쪽 넓은 구역(공이 림으로 내려오는 구간 전체)
+  BELOW: { x0:-60, x1:45, y0:20,  y1:130, minN:18 },   // 림 아래(그물 아래로 공이 지나가는 구역)
+  CLUSTER_GAP: 2.0,   // 이 시간(초) 안에 다시 들어온 공은 같은 슛
+  BELOW_WIN:   1.5,   // 마지막 도착 뒤 이 시간 안의 하강 신호까지 인정
+  MIN_BELOW_N: 1,     // 놓치는 성공이 없도록 느슨하게 (대신 후보가 늘어남)
+  NEAR_R: 70,         // 슛이 되려면 공이 림 중심에서 이 거리(림 폭 65 기준) 안까지 다가와야 함
+  MIN_DROP: 20,       // 그리고 위에서 아래로 이만큼 이상 내려오는 움직임이 있어야 함 (패스·드리블은 거의 수평/낮은 곳)
+  DROP_RATIO: 0.35,   // 내려간 양이 옆으로 움직인 양의 이 비율 이상 (패스처럼 옆으로 가는 공 제외)
+  CAN_W: 340, CAN_H: 330, RIM_X: 170, RIM_Y: 110, RIM_W: 65,
+  OUT_MADE_AFTER: 0.3,    // 성공: 공이 림 아래로 내려온 시각 + 이 값 = 마커 시각
+  OUT_MISS_AFTER: 0.2,    // 실패: 공이 구역에서 마지막으로 보인 시각 + 이 값
+};
+function adInZone(s, z) { return s.n >= z.minN && s.x >= z.x0 && s.x <= z.x1 && s.y >= z.y0 && s.y <= z.y1; }
+
+// 표본 [{t, n, x, y}] → 슛 목록 [{tEnter, tEnd, tBelow, nBelow, cand}]
+// ── 소리로 성공 확인 ──
+// 공이 림에 도착한 시점 전후의 고음(3~8kHz) 평균 크기를 주변 소음과 비교.
+// 림·백보드에 맞으면 "탕" 소리가 커지고, 깨끗이 들어가면(스윽) 조용해서 → 점수가 낮을수록 성공 쪽
+// (배속 재생에서는 소리가 변해 부정확하므로 후보 구간만 1배속으로 재생해서 잼)
+const AUD = { LO: 3000, HI: 8000, W0: -0.5, W1: 0.2, B0: -2.5, B1: -0.8, PRE: 2.7, POST: 0.4, THR: 4.5, SURE: 2.0 };   // SURE: 이 값 이하(아주 조용)면 확인 없이 성공으로 바로 확정
+function audioScoreFrom(series, tl) {
+  const base = [], win = [];
+  series.forEach(([t, v]) => {
+    if (!isFinite(v)) return;
+    if (t >= tl + AUD.B0 && t <= tl + AUD.B1) base.push(v);
+    if (t >= tl + AUD.W0 && t <= tl + AUD.W1) win.push(v);
+  });
+  if (base.length < 15 || win.length < 5) return null;
+  base.sort((a, b) => a - b);
+  const med = base[base.length >> 1];
+  if (med < -108) return null;      // 소리가 없는 영상(무음)이면 판단하지 않음
+  return win.reduce((a, b) => a + b, 0) / win.length - med;
+}
+function audioHint(aud) {
+  if (aud === null || aud === undefined) return null;
+  if (aud <= AUD.THR - 2) return { label: '🔊 조용함 — 성공 쪽', cls: 'ok' };
+  if (aud <= AUD.THR + 2) return { label: '🔊 애매함', cls: 'warn' };
+  return { label: '🔊 큰 소리 — 실패 쪽', cls: 'bad' };
+}
+// 성공 후보 구간만 1배속으로 재생하며 소리 점수를 계산해서 shots[i].aud 에 저장
+function audioPass(idx, shots, onProg, opts) {
+  opts = opts || {};
+  return new Promise(resolve => {
+    const cands = shots.filter(s => s.cand).sort((a, b) => a.tLast - b.tLast);
+    if (!cands.length) { resolve({ ok: true, n: 0 }); return; }
+    const groups = [];
+    cands.forEach(c => {
+      const st = Math.max(0, c.tLast + AUD.B0 - 0.2), en = c.tLast + AUD.POST + 0.3;
+      const g = groups[groups.length - 1];
+      if (g && st <= g.en + 0.3) { g.en = Math.max(g.en, en); g.items.push(c); } else groups.push({ st, en, items: [c] });
+    });
+    const file = fileQueue[idx];
+    const sv = document.createElement('video');
+    sv.playsInline = true; sv.preload = 'auto';
+    let actx = null, an = null, abuf = null, aLo = 0, aHi = 0, done = false, gi = 0, series = [], segResolve = null, lastCb = performance.now(), wd = null, done_n = 0;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      actx = new AC();
+      const src = actx.createMediaElementSource(sv);
+      an = actx.createAnalyser(); an.fftSize = 1024; an.smoothingTimeConstant = 0;
+      src.connect(an);   // 스피커에는 연결하지 않음 (소리 안 남)
+      abuf = new Float32Array(an.frequencyBinCount);
+      const bh = actx.sampleRate / an.fftSize; aLo = Math.round(AUD.LO / bh); aHi = Math.round(AUD.HI / bh);
+    } catch (e) { resolve({ ok: false, err: '이 브라우저는 소리 분석을 지원하지 않아요' }); return; }
+    const url = URL.createObjectURL(file);
+    liveOpen('🔊 소리 확인 중 (1배속)', sv); liveHoop(null);
+    const finish = (ok, err) => {
+      if (done) return; done = true; clearInterval(wd);
+      document.removeEventListener('visibilitychange', onVis);
+      try { sv.pause(); } catch (e) {}
+      sv.removeAttribute('src'); try { sv.load(); } catch (e) {}
+      liveClose(); try { URL.revokeObjectURL(url); } catch (e) {}
+      try { actx.close(); } catch (e) {}
+      resolve({ ok, err, n: done_n });
+    };
+    const onVis = () => { if (done) return; if (document.hidden) sv.pause(); else if (segResolve) sv.play().catch(() => {}); };
+    document.addEventListener('visibilitychange', onVis);
+    const endSeg = () => { if (segResolve) { const r = segResolve; segResolve = null; r(); } };
+    sv.onerror = () => finish(false, '영상을 열 수 없어요');
+    sv.onended = () => endSeg();
+    const seekTo = t => new Promise(res => { const to = setTimeout(res, 4000); sv.onseeked = () => { clearTimeout(to); res(); }; sv.currentTime = t; });
+    let curEnd = 0;
+    const cb = (now, md) => {
+      if (done) return;
+      lastCb = performance.now();
+      const t = md && typeof md.mediaTime === 'number' ? md.mediaTime : sv.currentTime;
+      if (t >= curEnd) { endSeg(); return; }
+      an.getFloatFrequencyData(abuf);
+      let e = 0; for (let i = aLo; i < aHi; i++) e += Math.pow(10, abuf[i] / 10);
+      series.push([t, 10 * Math.log10(e + 1e-12)]);
+      sv.requestVideoFrameCallback(cb);
+    };
+    sv.onloadedmetadata = async () => {
+      try {
+        if (!('requestVideoFrameCallback' in sv)) { finish(false, '이 브라우저는 지원하지 않아요 (크롬 권장)'); return; }
+        try { await actx.resume(); } catch (e) {}
+        wd = setInterval(() => { if (!done && !document.hidden && segResolve && !sv.paused && performance.now() - lastCb > 15000) finish(false, '진행이 멈췄어요'); }, 2000);
+        const total = groups.reduce((a, g) => a + (g.en - g.st), 0);
+        let played = 0;
+        for (gi = 0; gi < groups.length && !done; gi++) {
+          const g = groups[gi];
+          series = []; curEnd = g.en;
+          await seekTo(g.st); sv.onseeked = null;
+          await new Promise(res => { segResolve = res; sv.requestVideoFrameCallback(cb); sv.play().catch(() => {}); });
+          sv.pause();
+          g.items.forEach(c => { c.aud = audioScoreFrom(series, c.tLast); done_n++; });
+          played += g.en - g.st;
+          onProg(total ? played / total : 1, 'audio');
+          const hs = g.items.map(c => c.aud === null ? '' : `${fmtSec(c.tLast)} ${c.aud.toFixed(1)}`).join(' · ');
+          liveInfo(`후보 <b>${done_n}</b>/${cands.length} 확인${hs ? '<br>' + hs : ''}`);
+        }
+        finish(true);
+      } catch (e) { finish(false, String(e && e.message || e)); }
+    };
+    auto._abortFns = auto._abortFns || [];
+    auto._abortFns.push(() => finish(false, 'abort'));
+    sv.src = url;
+  });
+}
+
+// 슛다운 움직임인가? 림 가까이 오고, 위에서 아래로 내려오는 구간이 있어야 함
+function adShotLike(pts) {
+  if (!pts.some(p => Math.hypot(p.x, p.y) <= AD.NEAR_R)) return false;
+  if (pts.length < 4) return true;      // 표본이 너무 적으면 움직임을 판단할 수 없으니 슛으로 인정
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+    const dy = pts[j].y - pts[i].y;
+    if (dy >= AD.MIN_DROP && dy >= AD.DROP_RATIO * Math.abs(pts[j].x - pts[i].x)) return true;
+  }
+  return false;
+}
+// 성공 확률 모델: 공이 림 근처에 머문 시간(dwell)과 소리 점수로 계산 (119 완.mp4 성공 후보 192개로 맞춤)
+const PM = { D_MU: 0.1288, D_SD: 0.2632, A_MU: 2.584, A_SD: 9.91, W_D: -0.9433, W_A: -0.7804, B: 1.1451, B_D: 1.0522, W_DONLY: -1.3187, HI: 0.8, LO: 0.2 };
+function madeProb(sh) {
+  const d = (sh.dwell - PM.D_MU) / PM.D_SD;
+  const z = (sh.aud === null || sh.aud === undefined)
+    ? PM.B_D + d * PM.W_DONLY
+    : PM.B + (sh.aud - PM.A_MU) / PM.A_SD * PM.W_A + d * PM.W_D;
+  return 1 / (1 + Math.exp(-z));
+}
+// 림 주변(그물 위치)에 공이 머문 시간 — 성공은 휙 통과, 림에 맞고 튕기면 오래 머묾
+function shotDwell(samples, sh) {
+  let first = null, last = null;
+  for (const p of samples) {
+    if (p.t < sh.tEnter - 0.3) continue;
+    if (p.t > sh.tEnd + 1.6) break;
+    if (Math.abs(p.x) < 45 && p.y > -35 && p.y < 20) { if (first === null) first = p.t; last = p.t; }
+  }
+  return first === null ? 0 : last - first;
+}
+// 림 위쪽에서는 안 보였는데 그물 아래로 곧장 떨어지는 공 = 성공 (백보드 뒤/그물에 가려졌던 슛)
+function findNetDrops(samples, shots) {
+  const P = { y0: 15, y1: 100, xa: -50, xb: 50, minN: 2, minDy: 40, gap: 0.25, near: 3.0, maxDx: 45 };
+  const B = samples.filter(p => p.x >= -60 && p.x <= 45 && p.y >= 20 && p.y <= 220);
+  const out = []; let cur = null; const tracks = [];
+  B.forEach(p => { if (cur && p.t - cur[cur.length - 1].t <= P.gap && p.y >= cur[cur.length - 1].y - 8) cur.push(p); else { cur = [p]; tracks.push(cur); } });
+  tracks.forEach(tr => {
+    if (tr.length < P.minN) return;
+    const f = tr[0], l = tr[tr.length - 1];
+    if (f.y < P.y0 || f.y > P.y1 || f.x < P.xa || f.x > P.xb) return;
+    if (l.y - f.y < P.minDy || Math.abs(l.x - f.x) > P.maxDx) return;
+    if (shots.some(s => f.t >= s.tEnter - 1.0 && f.t <= s.tEnd + P.near)) return;
+    out.push({ tEnter: f.t - 0.35, tLast: f.t, pts: tr, weak: false, nBelow: tr.length, cand: true, tBelow: f.t, tEnd: l.t, net: true, dwell: 0 });
+  });
+  return out;
+}
+
+// 탐지된 슛 하나를 어떻게 처리할지 결정: 확실하면 자동 확정, 애매하면 후보(확인 필요)
+function autoDecision(sh, allowSure) {
+  if (sh.net) return { type: 'made', review: true, p: 0.7, net: true };
+  if (sh.cand) {
+    const p = madeProb(sh);
+    if (!sh.weak && allowSure && p >= PM.HI) return { type: 'made', review: false, sure: true, p };
+    if (!sh.weak && allowSure && p <= PM.LO) return { type: 'missed', review: false, sure: true, p };
+    return { type: 'made', review: true, p };
+  }
+  if (sh.maybe) return { type: 'missed', review: true, maybe: true, p: 0.4 };
+  return { type: 'missed', review: !!sh.weak, p: 0 };
+}
+function analyzeShots(samples) {
+  const shots = [];
+  samples.forEach(s => {
+    if (!adInZone(s, AD.ARR)) return;
+    const last = shots[shots.length - 1];
+    if (last && s.t - last.tLast <= AD.CLUSTER_GAP) { last.tLast = s.t; last.pts.push(s); }
+    else shots.push({ tEnter: s.t, tLast: s.t, pts: [s] });
+  });
+  shots.forEach(sh => { sh.weak = !adShotLike(sh.pts); });    // 패스·드리블처럼 보이는 움직임은 '의심'으로 표시 (버리지 않고 확인하게 함)
+  shots.forEach((sh, k) => {
+    const nextEnter = k + 1 < shots.length ? shots[k + 1].tEnter : Infinity;
+    const a = sh.tEnter - 0.15, z = Math.min(sh.tLast + AD.BELOW_WIN, nextEnter - 0.05);
+    const hit = samples.filter(s => s.t >= a && s.t <= z && adInZone(s, AD.BELOW));
+    sh.nBelow = hit.length;
+    sh.cand   = hit.length >= AD.MIN_BELOW_N;
+    sh.tBelow = hit.length ? hit[0].t : null;
+    let tEnd = sh.tLast;
+    samples.forEach(s => {
+      if (s.t >= a && s.t <= z && (adInZone(s, AD.BELOW) || adInZone(s, AD.ARR)) && s.t > tEnd) tEnd = s.t;
+    });
+    sh.tEnd = tEnd;
+    sh.dwell = shotDwell(samples, sh);
+    if (!sh.cand && !sh.weak && sh.pts.length <= 3) { const nx = samples.find(q => q.t > tEnd + 0.05); sh.maybe = (nx ? nx.t - tEnd : 9) >= 0.2; }   // 림 위에서 보이다 사라짐 = 성공일 수도
+  });
+  return shots.concat(findNetDrops(samples, shots)).sort((a, b) => a.tEnter - b.tEnter);
+}
+
+const auto   = { busy:false, abort:false, step:'idle', p:[], hoop:null, scope:'one', rate:3, hoopMode:'one', useAudio: lsGet('bm_useaudio') !== '0', autoSure: lsGet('bm_autosure') !== '0' };
+const review = { active:false, list:[], k:0, loopStart:0, loopEnd:0 };
+let reviewHist = [];      // 후보 확인 기록 (Z로 방금 전 판단부터 되돌림)
+let sortUndo = null;      // 소리 자동 정리 직전 상태
+let afterLoad = null;
+const autoBar    = document.getElementById('auto-bar');
+const hoopPick   = document.getElementById('hoop-pick');
+const videoAreaEl= document.getElementById('video-area');
+
+// ── 하단 안내줄 ──
+function setBar(parts) {
+  autoBar.innerHTML = '';
+  parts.forEach(p => {
+    let el;
+    if (p.node) el = p.node;
+    else if (p.btn) { el = document.createElement('button'); el.className = 'ab-btn ' + (p.cls || ''); el.textContent = p.btn; el.addEventListener('click', e => { e.currentTarget.blur(); p.fn(); }); }
+    else { el = document.createElement('span'); el.className = p.cls || 'ab-sub'; el.textContent = p.text; }
+    autoBar.appendChild(el);
+  });
+  autoBar.classList.add('on');
+}
+function hideBar() { autoBar.classList.remove('on'); autoBar.innerHTML = ''; }
+function makeSelect(opts, val, onChange) {
+  const s = document.createElement('select');
+  opts.forEach(([v, label]) => { const o = document.createElement('option'); o.value = String(v); o.textContent = label; s.appendChild(o); });
+  s.value = String(val);
+  s.addEventListener('change', () => onChange(s.value));
+  return s;
+}
+
+// ── 진입 ──
+function openAuto() {
+  if (auto.busy) { flash('🤖 탐지 중이에요', 'var(--in-pt)'); return; }
+  if (uploadScr.style.display !== 'none' || !videoData.length) return;
+  if (review.active) endReview(true);
+  auto.forVerify = false;
+  const pend = pendingReviewCount();
+  const parts = [{ text: '🤖 자동 탐지', cls: 'ab-msg' }];
+  if (pend) parts.push({ btn: `❓ 후보 확인 (${pend}개)`, cls: 'ok', fn: () => startReview() });
+  const autoN = videoData.reduce((a, v) => a + v.allMarkers.filter(m => m.auto).length, 0);
+  if (autoN) parts.push({ btn: `👀 자동 결과 전부 훑어보기 (${autoN}개)`, fn: () => startReview(true) });
+  parts.push({ btn: pend ? '새로 탐지' : '▶ 탐지 시작', cls: 'primary', fn: () => { auto.hoopMode = 'one'; beginPick(); } });
+  parts.push({ btn: '🎬 구간별 탐지 (편집·이어붙인 영상)', fn: () => { auto.hoopMode = 'clips'; auto.scope = 'one'; showScanOptions(); } });
+  parts.push({ btn: '닫기', fn: () => { cancelPick(); hideBar(); } });
+  parts.push({ text: '골대 주변 공의 움직임으로 슛 시점을 찾아요. 림에 맞고 빗나간 슛이 섞일 수 있어 성공 후보는 직접 확인합니다.' });
+  setBar(parts);
+}
+function pendingReviewCount() { return videoData.reduce((s, v) => s + v.allMarkers.filter(m => m.review).length, 0); }
+
+// ── 골대 지정 (림 왼쪽 끝 → 오른쪽 끝) ──
+function beginPick() {
+  if (!video.videoWidth) { flash('영상을 불러오는 중이에요', '#888'); return; }
+  video.pause();
+  auto.p = []; auto.step = 'pick1';
+  clearDots();
+  hoopPick.classList.add('on');
+  const vd = videoData[currentIdx];
+  const parts = [{ text: '① 림(골대 링)의 왼쪽 끝을 클릭하세요', cls: 'ab-msg' }];
+  const prev = vd.hoop || loadLastHoop();
+  if (prev) parts.push({ btn: '이전 골대 위치 사용', cls: 'ok', fn: () => { auto.hoop = prev; cancelPick(true); afterHoopSet(); } });
+  parts.push({ btn: '취소', fn: () => { cancelPick(); hideBar(); } });
+  setBar(parts);
+}
+function clearDots() { hoopPick.innerHTML = ''; document.querySelectorAll('.hp-dot').forEach(d => d.remove()); }
+function cancelPick(keepBar) { cpLoupe.style.display = 'none'; auto.step = 'idle'; hoopPick.classList.remove('on'); clearDots(); if (!keepBar) auto.forVerify = false; }
+function loadLastHoop() {
+  try { const h = JSON.parse(lsGet('bm_hoop') || 'null'); if (h && isFinite(h.x) && isFinite(h.y) && isFinite(h.w) && h.w > 0) return h; } catch (e) {}
+  return null;
+}
+hoopPick.addEventListener('click', e => {
+  if (auto.step !== 'pick1' && auto.step !== 'pick2') return;
+  const r = video.getBoundingClientRect();
+  const fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+  if (fx < 0 || fx > 1 || fy < 0 || fy > 1) return;
+  const ar = videoAreaEl.getBoundingClientRect();
+  const dot = document.createElement('div'); dot.className = 'hp-dot';
+  dot.style.left = (e.clientX - ar.left) + 'px'; dot.style.top = (e.clientY - ar.top) + 'px';
+  videoAreaEl.appendChild(dot);
+  auto.p.push({ fx, fy });
+  if (auto.step === 'pick1') {
+    auto.step = 'pick2';
+    setBar([{ text: '② 림의 오른쪽 끝을 클릭하세요', cls: 'ab-msg' }, { btn: '다시', fn: () => beginPick() }, { btn: '취소', fn: () => { cancelPick(); hideBar(); } }]);
+    return;
+  }
+  const vw = video.videoWidth, vh = video.videoHeight;
+  const a = auto.p[0], b = auto.p[1];
+  const wpx = Math.hypot((b.fx - a.fx) * vw, (b.fy - a.fy) * vh);
+  if (wpx < 12) { flash('너무 가까워요. 림 양쪽 끝을 눌러 주세요', '#f88'); auto.p = [auto.p[0]]; dot.remove(); return; }
+  auto.hoop = { x: (a.fx + b.fx) / 2, y: (a.fy + b.fy) / 2, w: wpx / vw };
+  cancelPick(true);
+  afterHoopSet();
+});
+hoopPick.addEventListener('mousemove', e => {
+  if (auto.step !== 'pick1' && auto.step !== 'pick2') return;
+  const r = video.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+  if (fx < 0 || fx > 1 || fy < 0 || fy > 1 || !video.videoWidth) { cpLoupe.style.display = 'none'; return; }
+  const c = cpLoupe.getContext('2d'), sw = 48, vw = video.videoWidth, vh = video.videoHeight;
+  c.fillStyle = '#000'; c.fillRect(0, 0, 192, 192);
+  try { c.drawImage(video, fx * vw - sw / 2, fy * vh - sw / 2, sw, sw, 0, 0, 192, 192); } catch (er) {}
+  c.strokeStyle = '#4af'; c.lineWidth = 1; c.beginPath(); c.moveTo(96, 0); c.lineTo(96, 192); c.moveTo(0, 96); c.lineTo(192, 96); c.stroke();
+  cpLoupe.style.display = 'block';
+  cpLoupe.style.left = Math.min(innerWidth - 200, e.clientX + 24) + 'px'; cpLoupe.style.top = Math.max(8, Math.min(innerHeight - 200, e.clientY - 96)) + 'px';
+});
+hoopPick.addEventListener('mouseleave', () => { cpLoupe.style.display = 'none'; });
+function afterHoopSet() {
+  if (auto.forVerify) {
+    auto.forVerify = false;
+    videoData[currentIdx].hoop = auto.hoop; lsSet('bm_hoop', JSON.stringify(auto.hoop)); saveSession();
+    hideBar(); openVerify();
+  } else { auto.hoopMode = 'one'; showScanOptions(); }
+}
+
+// ── 탐지 옵션 ──
+function showScanOptions() {
+  const vw = video.videoWidth || 1920;
+  const clipsMode = auto.hoopMode === 'clips';
+  const parts = [{ text: clipsMode ? '🎬 구간별 골대 — 편집점을 찾아 구간마다 골대를 지정해요' : `골대 지정됨 (림 폭 약 ${Math.round(auto.hoop.w * vw)}px)`, cls: 'ab-msg' }];
+  if (!clipsMode && fileQueue.length > 1) {
+    parts.push({ text: '범위' });
+    parts.push({ node: makeSelect([['one', '이 영상만'], ['all', `모든 영상 (${fileQueue.length}개)`]], auto.scope, v => { auto.scope = v; }) });
+  } else auto.scope = 'one';
+  parts.push({ text: '스캔 배속' });
+  parts.push({ node: makeSelect([[2, '2x (정확)'], [3, '3x (권장)'], [4, '4x (빠름)']], auto.rate, v => { auto.rate = parseFloat(v); }) });
+  parts.push({ text: '소리 확인' });
+  parts.push({ node: makeSelect([[1, '켜기 (권장·후보당 약 4초)'], [0, '끄기']], auto.useAudio ? 1 : 0, v => { auto.useAudio = v === '1'; lsSet('bm_useaudio', v); }) });
+  parts.push({ text: '성공/실패 확정' });
+  parts.push({ node: makeSelect([[1, '확실한 것은 자동 확정 (약 94% 정확)'], [0, '전부 후보로 남겨 직접 확인']], auto.autoSure ? 1 : 0, v => { auto.autoSure = v === '1'; lsSet('bm_autosure', v); }) });
+  parts.push({ btn: clipsMode ? '▶ 편집점 찾기 시작' : '▶ 탐지 시작', cls: 'primary', fn: () => runAuto() });
+  if (!clipsMode) parts.push({ btn: '다시 지정', fn: () => beginPick() });
+  parts.push({ btn: '취소', fn: () => hideBar() });
+  parts.push({ text: '※ 탐지 중에는 이 탭을 보이는 상태로 두세요. 이 영상의 기존 자동 결과는 교체되고 직접 찍은 마커는 유지돼요.' });
+  setBar(parts);
+}
+
+// ── 탐지 중 미리보기 (영상이 움직이고 슛 개수가 올라가는 것을 볼 수 있음) ──
+const lvBox = document.getElementById('live-box'), lvWrap = document.getElementById('lv-wrap'), lvInfo = document.getElementById('lv-info'), lvTitle = document.getElementById('lv-title');
+const lvRoi = document.getElementById('lv-roi'), lvRim = document.getElementById('lv-rim'), lvBall = document.getElementById('lv-ball');
+document.getElementById('lv-min').addEventListener('click', e => { lvBox.classList.toggle('min'); e.currentTarget.textContent = lvBox.classList.contains('min') ? '▸' : '▾'; e.currentTarget.blur(); });
+function liveOpen(title, sv) {
+  lvWrap.querySelectorAll('video').forEach(v => v.remove());
+  sv.style.cssText = 'width:100%;display:block';
+  lvWrap.insertBefore(sv, lvWrap.firstChild);
+  lvTitle.textContent = title; lvInfo.textContent = '';
+  lvRoi.style.display = 'none'; lvRim.style.display = 'none'; lvBall.style.display = 'none';
+  lvBox.classList.add('on');
+}
+function liveClose() { lvBox.classList.remove('on'); lvWrap.querySelectorAll('video').forEach(v => v.remove()); }
+function liveInfo(html) { lvInfo.innerHTML = html; }
+// 분석 영역(노란 점선)과 지정한 림 위치(파란 원)를 미리보기 위에 표시
+function liveHoop(hoop, vw, vh) {
+  if (!hoop) { lvRoi.style.display = 'none'; lvRim.style.display = 'none'; return; }
+  const s = AD.RIM_W / (hoop.w * vw);
+  lvRoi.style.cssText = `display:block;left:${(hoop.x * vw - AD.RIM_X / s) / vw * 100}%;top:${(hoop.y * vh - AD.RIM_Y / s) / vh * 100}%;width:${AD.CAN_W / s / vw * 100}%;height:${AD.CAN_H / s / vh * 100}%`;
+  lvRim.style.cssText = `display:block;left:${hoop.x * 100}%;top:${hoop.y * 100}%`;
+}
+// 지금까지 탐지된 슛 개수를 실시간으로 세기 (끝난 슛은 확정하고 버려서 가볍게 유지)
+function makeLiveCounter() {
+  let buf = [], fin = { shots: 0, cand: 0, weak: 0 }, times = [];
+  return {
+    add(s) { buf.push(s); },
+    snap(curT) {
+      const shots = analyzeShots(buf);
+      let k = 0;
+      while (k < shots.length && shots[k].tLast < curT - (AD.CLUSTER_GAP + AD.BELOW_WIN + 0.5)) k++;
+      if (k) {
+        for (let i = 0; i < k; i++) { fin.shots++; if (shots[i].cand) fin.cand++; if (shots[i].weak) fin.weak++; times.push(shots[i].tEnter); }
+        const cut = shots[k - 1].tEnd + 0.001;
+        buf = buf.filter(s => s.t > cut);
+      }
+      const pend = shots.slice(k);
+      return { shots: fin.shots + pend.length, cand: fin.cand + pend.filter(s => s.cand).length, weak: fin.weak + pend.filter(s => s.weak).length, last: times.concat(pend.map(x => x.tEnter)).slice(-4) };
+    }
+  };
+}
+
+// ── 한 영상 스캔 ──
+// opts.segs: [{t0,t1,hoop}] 구간별 골대 (없으면 영상 전체를 hoop 한 곳으로)
+// 결과: { ok, err, segs:[{t0,t1,samples}], samples(전체), duration, medStep }
+function scanOne(idx, hoop, rate, onProg, opts) {
+  opts = opts || {};
+  return new Promise(resolve => {
+    const file = fileQueue[idx], vd = videoData[idx];
+    const sv = document.createElement('video');
+    sv.muted = true; sv.playsInline = true; sv.preload = 'auto';
+    const url = URL.createObjectURL(file);
+    liveOpen(opts.title || '🤖 탐지 중', sv);
+    const segOut = [], steps = [];
+    let done = false, dur = 0, lastCb = performance.now(), prevT = null, watchdog = null, lastLive = 0;
+    const onVis = () => { if (done) return; if (document.hidden) sv.pause(); else if (segResolve) sv.play().catch(() => {}); };
+    let segResolve = null, segEnd = 0;
+    document.addEventListener('visibilitychange', onVis);
+    const finish = (ok, err) => {
+      if (done) return; done = true;
+      clearInterval(watchdog);
+      document.removeEventListener('visibilitychange', onVis);
+      try { sv.pause(); } catch (e) {}
+      sv.removeAttribute('src'); try { sv.load(); } catch (e) {}
+      liveClose(); try { URL.revokeObjectURL(url); } catch (e) {}
+      const st = steps.slice().sort((a, b) => a - b);
+      resolve({ ok, err, segs: segOut, samples: [].concat(...segOut.map(g => g.samples)), duration: dur, medStep: st.length ? st[st.length >> 1] : 0 });
+    };
+    const endSeg = () => { if (segResolve) { const r = segResolve; segResolve = null; r(); } };
+    sv.onerror = () => finish(false, '영상을 열 수 없어요');
+    sv.onended = () => { if (segResolve) endSeg(); else finish(true); };
+    sv.onloadedmetadata = async () => {
+      try {
+        dur = sv.duration; vd.duration = vd.duration || dur;
+        const vw = sv.videoWidth, vh = sv.videoHeight;
+        if (!vw || !vh) { finish(false, '영상 크기를 알 수 없어요'); return; }
+        const segs = (opts.segs && opts.segs.length) ? opts.segs : [{ t0: 0, t1: dur, hoop }];
+        const W = AD.CAN_W, H = AD.CAN_H;
+        const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+        const ctx = cv.getContext('2d', { willReadFrequently: true });
+        const G = {};   // 현재 구간의 골대 기하
+        const setGeom = h => {
+          const rx = h.x * vw, ry = h.y * vh, rw = h.w * vw;
+          G.s = AD.RIM_W / rw; G.sx = rx - AD.RIM_X / G.s; G.sy = ry - AD.RIM_Y / G.s; G.sw = W / G.s; G.sh = H / G.s;
+        };
+        const grab = () => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); ctx.drawImage(sv, G.sx, G.sy, G.sw, G.sh, 0, 0, W, H); return ctx.getImageData(0, 0, W, H).data; };
+        const isOrange = (r, g, b) => r > 110 && (r - b) > 55 && (r - g) > 25 && (r - g) < 110 && (g - b) >= 0 && (g - b) < 70;
+        const seekTo = t => new Promise(res => { const to = setTimeout(res, 4000); sv.onseeked = () => { clearTimeout(to); res(); }; sv.currentTime = t; });
+        let stat = null, curSamples = null, lc = null, bgR = null, bgG = null, bgB = null;
+        const tot = { shots: 0, cand: 0, weak: 0, last: [] };
+        const sample = t => {
+          const d = grab();
+          let n = 0, sxx = 0, syy = 0, nd = 0, dxx = 0, dyy = 0, dx2 = 0, dy2 = 0, usedDark = false;
+          for (let i = 0, p = 0; i < W * H; i++, p += 4) {
+            const r = d[p], g = d[p + 1], b = d[p + 2];
+            if (!stat[i] && isOrange(r, g, b)) { n++; sxx += i % W; syy += (i / W) | 0; }
+            else if (r > 60 && r - b > 22 && r >= g && Math.abs(r - bgR[i]) + Math.abs(g - bgG[i]) + Math.abs(b - bgB[i]) > 90) { const xx = i % W, yy = (i / W) | 0; nd++; dxx += xx; dyy += yy; dx2 += xx * xx; dy2 += yy * yy; }   // 어둡게 찍힌 공 후보: 배경과 달라진 갈색 픽셀
+          }
+          // 주황색이 거의 안 잡힐 때만, 공처럼 작고 뭉친 덩어리(사람·조명 변화는 제외)를 대신 사용
+          if (n < 20 && nd >= 60 && nd <= 900) {
+            const mx = dxx / nd, my = dyy / nd, sdx = Math.sqrt(Math.max(0, dx2 / nd - mx * mx)), sdy = Math.sqrt(Math.max(0, dy2 / nd - my * my));
+            if (sdx <= 11 && sdy <= 11) { n = nd; sxx = dxx; syy = dyy; usedDark = true; }
+          }
+          if (n >= 20) {
+            const s = { t, n, x: sxx / n - AD.RIM_X, y: syy / n - AD.RIM_Y }; if (usedDark) s.dk = 1; curSamples.push(s); lc.add(s);
+            if (lvBox.classList.contains('on') && !lvBox.classList.contains('min')) {   // 앱이 "공"이라고 보는 위치를 빨간 원으로 표시
+              const px = (G.sx + (sxx / n) / G.s) / vw, py = (G.sy + (syy / n) / G.s) / vh, rr = Math.sqrt(n / Math.PI) / G.s / vw * 100 * 2;
+              lvBall.style.cssText = `display:block;left:${px * 100}%;top:${py * 100}%;width:${Math.max(rr, 1.6)}%;height:${Math.max(rr, 1.6) * vw / vh}%`;
+            }
+          } else lvBall.style.display = 'none';
+        };
+        // 영상 FPS도 함께 측정 (처음 잠깐 1배속)
+        const fpsS = []; let lastF = null, fpsDone = false, calls = 0, segNo = 0;
+        const guess = () => file.name.toLowerCase().includes('30') ? 30 : 60;
+        const applyFps = (f, isDef) => {
+          if (!vd.fpsOk || (vd.fpsDefault && !isDef)) { vd.fps = f; vd.fpsOk = true; vd.fpsDefault = isDef; if (idx === currentIdx) showFps(vd); }
+        };
+        const showLive = t => {
+          const c = lc.snap(t);
+          let h = `⏱ <b>${fmtSec(t)}</b> / ${fmtSec(dur)}<br>슛 <b>${tot.shots + c.shots}</b> · 성공 후보 <b style="color:var(--made)">${tot.cand + c.cand}</b> · 실패 <b style="color:var(--missed)">${tot.shots + c.shots - tot.cand - c.cand}</b>` + ((tot.weak + c.weak) ? ` · 의심 <b style="color:var(--accent)">${tot.weak + c.weak}</b>` : '');
+          const lastS = tot.last.concat(c.last || []).slice(-4);
+          if (lastS.length) h += `<br>최근 슛: ${lastS.map(fmtSec).join(' · ')}`;
+          if (segs.length > 1) h += `<br>구간 ${segNo}/${segs.length}`;
+          if (opts.liveExtra) { const x = opts.liveExtra(t); if (x) h += '<br>' + x; }
+          liveInfo(h);
+        };
+        const cb = (now, md) => {
+          if (done) return;
+          lastCb = performance.now();
+          const t = md && typeof md.mediaTime === 'number' ? md.mediaTime : sv.currentTime;
+          if (t >= segEnd - 0.02) { endSeg(); return; }
+          if (prevT !== null && t > prevT) steps.push(t - prevT);
+          prevT = t;
+          sample(t);
+          if (!fpsDone) {
+            calls++;
+            if (md && typeof md.presentedFrames === 'number') {
+              if (lastF && md.presentedFrames - lastF.pf === 1 && sv.playbackRate <= 1) {
+                const dt = md.mediaTime - lastF.mt;
+                if (dt > 0) { const f = 1 / dt; if (f >= 20 && f <= 130) fpsS.push(f); }
+              }
+              lastF = { mt: md.mediaTime, pf: md.presentedFrames };
+            }
+            if (fpsS.length >= 12) { fpsDone = true; applyFps(snapFps(median(fpsS)), false); sv.playbackRate = rate; }
+            else if (calls >= 150) { fpsDone = true; applyFps(guess(), true); sv.playbackRate = rate; }
+          }
+          onProg(dur ? t / dur : 0, 'scan');
+          if (performance.now() - lastLive > 1000) { lastLive = performance.now(); showLive(t); }
+          sv.requestVideoFrameCallback(cb);
+        };
+        if (!('requestVideoFrameCallback' in sv)) { finish(false, '이 브라우저는 지원하지 않아요 (크롬 권장)'); return; }
+        watchdog = setInterval(() => {
+          if (!done && !document.hidden && segResolve && !sv.paused && performance.now() - lastCb > 20000) finish(false, '진행이 멈췄어요');
+        }, 2000);
+
+        for (let k = 0; k < segs.length && !done; k++) {
+          const sg = segs[k];
+          if (!(sg.t1 - sg.t0 >= 0.8) || !sg.hoop) continue;
+          segNo = k + 1;
+          setGeom(sg.hoop); liveHoop(sg.hoop, vw, vh);
+          // 1) 움직이지 않는 주황색(림, 바닥의 공 등)을 찾아서 제외
+          const K = segs.length === 1 ? 24 : Math.max(4, Math.min(16, Math.round((sg.t1 - sg.t0) / 3)));
+          const cnt = new Uint16Array(W * H), bgF = [];
+          for (let kk = 0; kk < K && !done; kk++) {
+            await seekTo(Math.min(sg.t1 - 0.05, sg.t0 + (sg.t1 - sg.t0) * (kk + 0.5) / K));
+            const d = grab();
+            for (let i = 0, p = 0; i < W * H; i++, p += 4) if (isOrange(d[p], d[p + 1], d[p + 2])) cnt[i]++;
+            bgF.push(new Uint8ClampedArray(d));
+            onProg(sg.t0 / dur, 'static');
+          }
+          if (done) return;
+          // 배경 영상(각 화소의 중앙값) — 움직이는 어두운 공을 찾는 데 사용
+          bgR = new Uint8Array(W * H); bgG = new Uint8Array(W * H); bgB = new Uint8Array(W * H);
+          { const vr = new Array(bgF.length), vg = new Array(bgF.length), vb = new Array(bgF.length), mid = bgF.length >> 1;
+            for (let i = 0, p = 0; i < W * H; i++, p += 4) {
+              for (let k2 = 0; k2 < bgF.length; k2++) { vr[k2] = bgF[k2][p]; vg[k2] = bgF[k2][p + 1]; vb[k2] = bgF[k2][p + 2]; }
+              vr.sort((x, y) => x - y); vg.sort((x, y) => x - y); vb.sort((x, y) => x - y);
+              bgR[i] = vr[mid]; bgG[i] = vg[mid]; bgB[i] = vb[mid];
+            } }
+          bgF.length = 0;
+          sv.onseeked = null;
+          const base = new Uint8Array(W * H);
+          const thr = segs.length === 1 ? K * 0.25 : Math.max(1, K * 0.25);
+          for (let i = 0; i < W * H; i++) if (cnt[i] > thr) base[i] = 1;
+          const tmp = new Uint8Array(W * H), R = 3;   // 3px 확장
+          stat = new Uint8Array(W * H);
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0; for (let dx = -R; dx <= R && !v; dx++) { const xx = x + dx; if (xx >= 0 && xx < W && base[y * W + xx]) v = 1; } tmp[y * W + x] = v; }
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { let v = 0; for (let dy = -R; dy <= R && !v; dy++) { const yy = y + dy; if (yy >= 0 && yy < H && tmp[yy * W + x]) v = 1; } stat[y * W + x] = v; }
+          // 2) 빠르게 재생하면서 프레임마다 주황색(공) 위치를 기록
+          curSamples = []; lc = makeLiveCounter();
+          segOut.push({ t0: sg.t0, t1: sg.t1, samples: curSamples });
+          segEnd = sg.t1; prevT = null;
+          await seekTo(sg.t0); sv.onseeked = null;
+          if (!fpsDone) sv.playbackRate = 1;
+          await new Promise(res => { segResolve = res; sv.requestVideoFrameCallback(cb); sv.play().catch(() => {}); });
+          sv.pause();
+          const c = lc.snap(Infinity); tot.shots += c.shots; tot.cand += c.cand; tot.weak += c.weak; tot.last = tot.last.concat(c.last || []).slice(-4); lc = makeLiveCounter();
+          showLive(segEnd);
+        }
+        finish(true);
+      } catch (e) { finish(false, String(e && e.message || e)); }
+    };
+    auto._abortFns = auto._abortFns || [];
+    auto._abortFns.push(() => finish(false, 'abort'));
+    sv.src = url;
+  });
+}
+// 스캔 결과 → 슛 목록 (구간별로 따로 분석)
+function shotsFromScan(res) { return [].concat(...res.segs.map(g => analyzeShots(g.samples))); }
+
+// ==========================================
+// 🎬 구간별 골대 — 편집점을 찾아 클립으로 나누고, 같은 장면끼리 묶어 골대를 한 번씩만 지정
+// ==========================================
+const CUT = { T: 7, K: 6, MIN_LEN: 1.2, GROUP: 14, RATE: 8, IMG_W: 1280, CAP_AT: 0.7 };
+function mem(vd) { if (!vd._mem) Object.defineProperty(vd, '_mem', { value: {}, enumerable: false, writable: true }); return vd._mem; }
+function sigDiff(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += Math.abs(a[i] - b[i]); return s / a.length; }
+
+// 영상을 빠르게 훑으며 화면이 확 바뀌는 지점(편집점)을 찾음
+function findClips(idx, onProg) {
+  return new Promise(resolve => {
+    const file = fileQueue[idx];
+    const sv = document.createElement('video');
+    sv.muted = true; sv.playsInline = true; sv.preload = 'auto';
+    const url = URL.createObjectURL(file);
+    liveOpen('🎬 편집점 찾는 중', sv); liveHoop(null);
+    const tc = document.createElement('canvas'); tc.width = 32; tc.height = 18;
+    const tx = tc.getContext('2d', { willReadFrequently: true });
+    const bc = document.createElement('canvas');
+    const clips = [{ t0: 0, t1: 0, img: null, sig: null }];
+    const recent = [];
+    let cur = clips[0], prev = null, lastCut = -99, done = false, dur = 0, lastCb = performance.now(), wd = null, lastT = 0, vw = 0, vh = 0;
+    const gray = () => {
+      tx.drawImage(sv, 0, 0, 32, 18);
+      const d = tx.getImageData(0, 0, 32, 18).data, g = new Uint8Array(576);
+      for (let i = 0, p = 0; i < 576; i++, p += 4) g[i] = (d[p] * 77 + d[p + 1] * 150 + d[p + 2] * 29) >> 8;
+      return g;
+    };
+    const capture = g => {
+      bc.width = CUT.IMG_W; bc.height = Math.round(CUT.IMG_W * vh / vw);
+      bc.getContext('2d').drawImage(sv, 0, 0, bc.width, bc.height);
+      cur.img = bc.toDataURL('image/jpeg', 0.85); cur.sig = g;
+    };
+    const finish = (ok, err) => {
+      if (done) return; done = true; clearInterval(wd);
+      try { sv.pause(); } catch (e) {}
+      sv.removeAttribute('src'); try { sv.load(); } catch (e) {}
+      liveClose(); try { URL.revokeObjectURL(url); } catch (e) {}
+      clips[clips.length - 1].t1 = dur || lastT;
+      const keep = clips.filter(c => c.t1 - c.t0 >= 0.5 && c.sig);
+      resolve({ ok, err, clips: keep });
+    };
+    sv.onerror = () => finish(false, '영상을 열 수 없어요');
+    sv.onended = () => finish(true);
+    sv.onloadedmetadata = async () => {
+      dur = sv.duration; vw = sv.videoWidth; vh = sv.videoHeight;
+      if (!vw || !vh || !('requestVideoFrameCallback' in sv)) { finish(false, '이 브라우저는 지원하지 않아요 (크롬 권장)'); return; }
+      const cb = (now, md) => {
+        if (done) return;
+        lastCb = performance.now();
+        const t = md && typeof md.mediaTime === 'number' ? md.mediaTime : sv.currentTime;
+        lastT = t;
+        const g = gray();
+        if (prev) {
+          const d = sigDiff(prev, g);
+          // 평소 프레임 간 변화(움직임)의 6배 이상 확 바뀌면 편집점 (최소 7)
+          const sorted = recent.slice().sort((a, b) => a - b), med = sorted.length ? sorted[sorted.length >> 1] : 0;
+          if (t - lastCut > CUT.MIN_LEN && d > Math.max(CUT.T, CUT.K * med)) {
+            cur.t1 = t; cur = { t0: t, t1: 0, img: null, sig: null }; clips.push(cur); lastCut = t; recent.length = 0;
+          } else { recent.push(d); if (recent.length > 40) recent.shift(); }
+        }
+        prev = g;
+        if (!cur.sig && t >= cur.t0 + CUT.CAP_AT) capture(g);
+        onProg(dur ? t / dur : 0, 'clips');
+        if (performance.now() - lastLiveC > 1000) { lastLiveC = performance.now(); liveInfo(`⏱ <b>${fmtSec(t)}</b> / ${fmtSec(dur)}<br>편집점 <b>${clips.length - 1}</b>개 발견`); }
+        sv.requestVideoFrameCallback(cb);
+      };
+      let lastLiveC = 0;
+      sv.playbackRate = CUT.RATE;
+      sv.requestVideoFrameCallback(cb);
+      await sv.play().catch(() => {});
+      wd = setInterval(() => { if (!done && !document.hidden && !sv.paused && performance.now() - lastCb > 20000) finish(false, '진행이 멈췄어요'); }, 2000);
+    };
+    auto._abortFns = auto._abortFns || [];
+    auto._abortFns.push(() => finish(false, 'abort'));
+    sv.src = url;
+  });
+}
+
+// 같은 장면(카메라 위치)끼리 묶기
+function groupClips(clips) {
+  const groups = [];
+  clips.forEach(c => {
+    let gi = -1;
+    for (let k = 0; k < groups.length; k++) if (sigDiff(groups[k].sig, c.sig) < CUT.GROUP) { gi = k; break; }
+    if (gi < 0) { groups.push({ sig: c.sig, img: c.img, hoop: null, pts: [] }); gi = groups.length - 1; }
+    c.g = gi;
+  });
+  return groups;
+}
+// 클립/그룹을 영상 데이터에 저장 (이미지는 메모리에만, 위치 정보는 세션에 저장)
+function storeClips(vd, clips, groups) {
+  vd.clips = clips.map(c => ({ t0: c.t0, t1: c.t1, g: c.g }));
+  vd.hoops = groups.map(g => g.hoop || null);
+  const m = mem(vd); m.clips = clips; m.groups = groups;
+}
+function segsFromClips(vd) {
+  const hs = vd.hoops || [];
+  return (vd.clips || []).filter(c => hs[c.g]).map(c => ({ t0: c.t0, t1: c.t1, hoop: hs[c.g] }));
+}
+
+// ── 구간별 골대 지정 화면 ──
+const cpPanel = document.getElementById('clip-panel'), cpBox = document.getElementById('cp-box'), cpLoupe = document.getElementById('cp-loupe');
+let cpState = null;
+function cpClose(result) {
+  cpPanel.classList.remove('open'); cpLoupe.style.display = 'none';
+  const st = cpState; cpState = null;
+  if (st) st.resolve(result);
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && cpPanel.classList.contains('open')) cpClose(null); });
+cpPanel.addEventListener('mousedown', e => { if (e.target === cpPanel) cpClose(null); });
+
+function openClipPanel(idx) {
+  return new Promise(resolve => {
+    const vd = videoData[idx], m = mem(vd);
+    if (!m.groups && vd.clips && vd.clips.length) {          // 세션에서 복구된 경우: 이미지 없이 위치만
+      const n = Math.max(...vd.clips.map(c => c.g)) + 1;
+      m.groups = Array.from({ length: n }, (_, i) => ({ sig: null, img: null, hoop: (vd.hoops || [])[i] || null, pts: [] }));
+      m.clips = vd.clips.map(c => ({ ...c }));
+    }
+    cpState = { idx, resolve };
+    cpPanel.classList.add('open');
+    renderClipPanel();
+  });
+}
+function cpDraw(i) {
+  const st = cpState; if (!st) return;
+  const g = mem(videoData[st.idx]).groups[i], cv = cpBox.querySelector(`canvas[data-g="${i}"]`);
+  if (!cv || !g.imgEl || !g.imgEl.complete) return;
+  cv.width = g.imgEl.naturalWidth; cv.height = g.imgEl.naturalHeight;
+  const c = cv.getContext('2d'); c.drawImage(g.imgEl, 0, 0);
+  const pts = g.pts.length ? g.pts : (g.hoop ? [{ fx: g.hoop.x - g.hoop.w / 2, fy: g.hoop.y }, { fx: g.hoop.x + g.hoop.w / 2, fy: g.hoop.y }] : []);
+  pts.forEach(p => { c.beginPath(); c.arc(p.fx * cv.width, p.fy * cv.height, 5, 0, 7); c.fillStyle = '#ffd24a'; c.fill(); c.strokeStyle = '#000'; c.lineWidth = 2; c.stroke(); });
+}
+function renderClipPanel() {
+  const st = cpState; if (!st) return;
+  const vd = videoData[st.idx], m = mem(vd), groups = m.groups, clips = m.clips;
+  const vw = video.videoWidth || 1920, scroll = cpBox.scrollTop;
+  const assigned = groups.filter(g => g.hoop).length;
+  let h = `<div class="sp-title">🎬 구간별 골대 지정</div>
+    <div class="vp-note">영상을 <b>${clips.length}개 클립</b>으로 나누고, 같은 장면끼리 <b>${groups.length}개 그룹</b>으로 묶었어요. 그룹마다 사진에서 <b>림(골대 링)의 왼쪽 끝 → 오른쪽 끝</b>을 클릭해 주세요. (마우스를 올리면 확대돼요) 그룹이 잘못 묶였으면 "클립별로 나누기"를 쓰세요.</div>`;
+  groups.forEach((g, i) => {
+    const mine = clips.map((c, k) => ({ c, k })).filter(o => o.c.g === i);
+    const spans = mine.slice(0, 8).map(o => fmtSec(o.c.t0) + '–' + fmtSec(o.c.t1)).join(' · ') + (mine.length > 8 ? ` … 외 ${mine.length - 8}개` : '');
+    const total = mine.reduce((s, o) => s + (o.c.t1 - o.c.t0), 0);
+    h += `<div class="cp-g"><div class="sp-sec-title">그룹 ${i + 1} · 클립 ${mine.length}개 (합계 ${fmtSec(total)}) · ${g.hoop ? '<span style="color:var(--made)">✅ 림 폭 약 ' + Math.round(g.hoop.w * vw) + 'px</span>' : '<span style="color:var(--accent)">⚠ 림 양끝을 클릭하세요</span>'}</div>
+      <div class="vp-note">${spans}</div>
+      ${g.img ? `<canvas class="cp-cv" data-g="${i}"></canvas>` : '<div class="vp-note">미리보기 이미지가 없어요 — "구간 다시 분석"을 눌러 주세요 (저장된 골대 위치는 그대로 쓸 수 있어요)</div>'}
+      <div class="sp-footer" style="justify-content:flex-start;gap:8px">
+        <button class="sp-btn cp-redo" data-g="${i}" style="padding:3px 10px;font-size:.7rem">다시 찍기</button>
+        ${loadLastHoop() ? `<button class="sp-btn cp-last" data-g="${i}" style="padding:3px 10px;font-size:.7rem">이전 골대 위치 사용</button>` : ''}
+        ${mine.length > 1 ? `<button class="sp-btn cp-split" data-g="${i}" style="padding:3px 10px;font-size:.7rem">클립별로 나누기</button>` : ''}
+      </div></div>`;
+  });
+  h += `<div class="sp-footer">
+      <button class="sp-btn" id="cp-re">🔄 구간 다시 분석</button>
+      <button class="sp-btn" id="cp-cancel">취소</button>
+      <button class="sp-btn primary" id="cp-go"${assigned ? '' : ' disabled'}>▶ 탐지 시작 (${assigned}/${groups.length}그룹 지정됨)</button></div>`;
+  if (assigned && assigned < groups.length) h += `<div class="vp-note" style="color:var(--accent)">골대를 지정하지 않은 그룹의 구간은 탐지에서 건너뜁니다.</div>`;
+  cpBox.innerHTML = h;
+  groups.forEach((g, i) => {
+    if (!g.img) return;
+    if (!g.imgEl) { g.imgEl = new Image(); g.imgEl.onload = () => cpDraw(i); g.imgEl.src = g.img; } else cpDraw(i);
+  });
+  cpBox.scrollTop = scroll;
+  const q = s => cpBox.querySelectorAll(s);
+  q('.cp-cv').forEach(cv => {
+    const i = +cv.dataset.g, g = groups[i];
+    const pos = e => { const r = cv.getBoundingClientRect(); return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height }; };
+    cv.onmousemove = e => {
+      const { fx, fy } = pos(e), c = cpLoupe.getContext('2d'), sw = 40;
+      c.fillStyle = '#000'; c.fillRect(0, 0, 192, 192);
+      c.drawImage(g.imgEl, fx * cv.width - sw / 2, fy * cv.height - sw / 2, sw, sw, 0, 0, 192, 192);
+      c.strokeStyle = '#4af'; c.lineWidth = 1; c.beginPath(); c.moveTo(96, 0); c.lineTo(96, 192); c.moveTo(0, 96); c.lineTo(192, 96); c.stroke();
+      cpLoupe.style.display = 'block';
+      cpLoupe.style.left = Math.min(innerWidth - 200, e.clientX + 24) + 'px'; cpLoupe.style.top = Math.max(8, Math.min(innerHeight - 200, e.clientY - 96)) + 'px';
+    };
+    cv.onmouseleave = () => { cpLoupe.style.display = 'none'; };
+    cv.onclick = e => {
+      const p = pos(e);
+      if (g.pts.length >= 2 || g.hoop && !g.pts.length) { g.pts = []; g.hoop = null; }
+      g.pts.push(p);
+      if (g.pts.length === 2) {
+        const nw = cv.width, nh = cv.height, a = g.pts[0], b = g.pts[1];
+        const wpx = Math.hypot((b.fx - a.fx) * vw, (b.fy - a.fy) * vw * nh / nw);
+        if (wpx < 12) { flash('너무 가까워요. 림 양쪽 끝을 눌러 주세요', '#f88'); g.pts = []; cpDraw(i); return; }
+        g.hoop = { x: (a.fx + b.fx) / 2, y: (a.fy + b.fy) / 2, w: wpx / vw };
+        g.pts = [];
+        vd.hoops = groups.map(x => x.hoop || null); lsSet('bm_hoop', JSON.stringify(g.hoop)); saveSession();
+        renderClipPanel();
+      } else cpDraw(i);
+    };
+  });
+  q('.cp-redo').forEach(b => b.onclick = () => { const g = groups[+b.dataset.g]; g.hoop = null; g.pts = []; vd.hoops = groups.map(x => x.hoop || null); renderClipPanel(); });
+  q('.cp-last').forEach(b => b.onclick = () => { groups[+b.dataset.g].hoop = loadLastHoop(); vd.hoops = groups.map(x => x.hoop || null); saveSession(); renderClipPanel(); });
+  q('.cp-split').forEach(b => b.onclick = () => {
+    const gi = +b.dataset.g, mine = clips.filter(c => c.g === gi);
+    mine.slice(1).forEach(c => { groups.push({ sig: c.sig, img: c.img || groups[gi].img, hoop: groups[gi].hoop, pts: [] }); c.g = groups.length - 1; });
+    vd.clips = clips.map(c => ({ t0: c.t0, t1: c.t1, g: c.g })); vd.hoops = groups.map(x => x.hoop || null); saveSession();
+    renderClipPanel();
+  });
+  document.getElementById('cp-cancel').onclick = () => cpClose(null);
+  document.getElementById('cp-re').onclick = () => cpClose('redo');
+  document.getElementById('cp-go').onclick = () => {
+    vd.clips = clips.map(c => ({ t0: c.t0, t1: c.t1, g: c.g })); vd.hoops = groups.map(x => x.hoop || null); saveSession();
+    cpClose(segsFromClips(vd));
+  };
+}
+
+// 구간 준비: (필요하면 편집점 찾기) → 골대 지정 화면 → 구간 목록 반환 (취소면 null)
+async function prepareSegs(idx, forceFind, onProg) {
+  const vd = videoData[idx];
+  for (;;) {
+    if (forceFind || !(vd.clips && vd.clips.length)) {
+      const res = await findClips(idx, onProg);
+      if (auto.abort) return null;
+      if (!res.ok || !res.clips.length) { flash('⚠ ' + (res.err || '편집점을 찾지 못했어요'), '#f88'); return null; }
+      const groups = groupClips(res.clips);
+      // 이전에 같은 구간 개수로 지정한 골대가 있으면 이어서 사용
+      storeClips(vd, res.clips, groups); saveSession();
+      forceFind = false;
+    }
+    const r = await openClipPanel(idx);
+    if (r === 'redo') { forceFind = true; vd.hoops = []; mem(vd).groups = null; continue; }
+    return r;   // 구간 목록 또는 null
+  }
+}
+
+
+// ── 전체 실행 ──
+async function runAuto() {
+  const clipsMode = auto.hoopMode === 'clips';
+  if (auto.busy || (!clipsMode && !auto.hoop)) return;
+  auto.busy = true; auto.abort = false; auto._abortFns = [];
+  video.pause();
+  const hoop = clipsMode ? null : auto.hoop;
+  if (hoop) lsSet('bm_hoop', JSON.stringify(hoop));
+  const targets = (auto.scope === 'all' && !clipsMode) ? fileQueue.map((_, i) => i) : [currentIdx];
+  let tShots = 0, tCand = 0, tMiss = 0, tSure = 0, warn = '';
+  const t0 = performance.now();
+  for (let k = 0; k < targets.length; k++) {
+    if (auto.abort) break;
+    const idx = targets[k];
+    const bar = document.createElement('div'); bar.className = 'ab-prog'; const fill = document.createElement('div'); bar.appendChild(fill);
+    const msg = { text: '', cls: 'ab-msg' };
+    const txt = document.createElement('span'); txt.className = 'ab-msg';
+    setBar([{ node: txt }, { node: bar }, { btn: '중지', cls: 'bad', fn: () => { auto.abort = true; (auto._abortFns || []).forEach(f => f()); } }]);
+    const label = `🤖 ${targets.length > 1 ? `영상 ${k + 1}/${targets.length} · ` : ''}`;
+    txt.textContent = label + '준비 중...';
+    let segs = null;
+    if (clipsMode) {
+      segs = await prepareSegs(idx, false, (p) => { fill.style.width = Math.round(p * 100) + '%'; txt.textContent = `🎬 편집점 찾는 중 ${Math.round(p * 100)}%`; });
+      if (auto.abort || !segs) { auto.busy = false; auto.abort = false; auto._abortFns = []; hideBar(); flash(segs ? '중지했어요' : '구간별 탐지를 취소했어요', '#888'); return; }
+      if (!segs.length) { auto.busy = false; hideBar(); flash('골대를 지정한 구간이 없어요', '#f88'); return; }
+      setBar([{ node: txt }, { node: bar }, { btn: '중지', cls: 'bad', fn: () => { auto.abort = true; (auto._abortFns || []).forEach(f => f()); } }]);
+    }
+    const res = await scanOne(idx, hoop, auto.rate, (p, phase) => {
+      fill.style.width = Math.round(p * 100) + '%';
+      if (phase === 'static') txt.textContent = label + '배경 분석 중...';
+      else {
+        const dur = videoData[idx].duration || 0;
+        const remain = dur ? Math.max(0, dur * (1 - p) / auto.rate) : 0;
+        txt.textContent = `${label}탐지 중 ${Math.round(p * 100)}%  (남은 시간 약 ${remain >= 90 ? Math.round(remain / 60) + '분' : Math.round(remain) + '초'})`;
+      }
+    }, { segs, title: '🤖 자동 탐지 중' });
+    if (auto.abort) break;
+    if (!res.ok) { warn = `⚠ ${videoData[idx].fileName}: ${res.err}`; continue; }
+    if (res.medStep > 0.12) warn = '⚠ 프레임이 많이 건너뛰어졌어요 — 스캔 배속을 낮춰 보세요';
+    const shots = shotsFromScan(res);
+    if (auto.useAudio && shots.some(sh => sh.cand)) {
+      fill.style.width = '0%'; txt.textContent = label + '🔊 소리 확인 준비 중...';
+      const ar = await audioPass(idx, shots, p => { fill.style.width = Math.round(p * 100) + '%'; txt.textContent = `${label}🔊 소리로 성공 확인 중 ${Math.round(p * 100)}%`; });
+      if (auto.abort) break;
+      if (!ar.ok) warn = '⚠ 소리 확인 실패: ' + (ar.err || '');
+    }
+    const r = applyAuto(idx, shots);
+    if (hoop) videoData[idx].hoop = hoop;
+    tShots += r.total; tCand += r.cand; tMiss += r.miss; tSure += r.sure;
+  }
+  auto.busy = false;
+  const aborted = auto.abort; auto.abort = false; auto._abortFns = [];
+  syncShots();
+  renderMarkers(); updateUI(); saveSession();
+  if (aborted) { hideBar(); flash('탐지를 중지했어요', '#888'); return; }
+  const pend = pendingReviewCount();
+  console.log(`🤖 자동 탐지 | 슛 ${tShots} 실패확정 ${tMiss} 성공확정 ${tSure} 성공후보 ${tCand} (${Math.round((performance.now() - t0) / 1000)}초)`);
+  if (pend) {
+    const withAud = videoData.reduce((a, v) => a + v.allMarkers.filter(m => m.review && m.aud !== undefined && !m.weak).length, 0);
+    const bp = [{ text: `🤖 슛 ${tShots}개 탐지 — 실패 ${tMiss}개 + 확실한 것 ${tSure}개 자동 확정, 애매한 후보 ${tCand}개 확인 필요 ${warn}`, cls: 'ab-msg' }, { btn: `❓ 후보 확인 시작 (${pend}개)`, cls: 'primary', fn: () => startReview() }, { btn: '👀 자동 확정 포함 전부 훑어보기', fn: () => startReview(true) }];
+    if (withAud) bp.push({ btn: `🔊 소리로 자동 정리 (${withAud}개)`, cls: 'ok', fn: () => audioSort() });
+    bp.push({ btn: '나중에', fn: () => hideBar() });
+    setBar(bp);
+    startReview();
+  } else {
+    setBar([{ text: `🤖 슛 ${tShots}개 탐지 — ${tSure ? `확실한 것 ${tSure}개 자동 확정, ` : ''}확인할 후보 없음 ${warn}`, cls: 'ab-msg' }, { btn: '닫기', fn: () => hideBar() }]);
+  }
+}
+
+// ── 탐지 결과를 마커로 반영 ──
+function applyAuto(idx, shots) {
+  const vd = videoData[idx];
+  const isSub = mode === 'count';
+  const keep = vd.allMarkers.filter(m => !m.auto);       // 직접 찍은 마커는 유지
+  const fresh = [];
+  let cand = 0, miss = 0, sure = 0;
+  shots.forEach(sh => {
+    const lo = sh.tEnter - 0.5, hi = sh.tEnd + 2.5;
+    if (keep.some(m => m.out >= lo && m.out <= hi)) return;   // 이미 직접 기록한 슛은 건너뜀
+    const dc = autoDecision(sh, auto.autoSure);
+    let out = dc.type === 'made' ? sh.tBelow + AD.OUT_MADE_AFTER : sh.tEnd + (dc.maybe ? AD.OUT_MADE_AFTER : AD.OUT_MISS_AFTER);
+    if (vd.duration && out > vd.duration) out = vd.duration;
+    const mk = { type: dc.type, in: out, out, fileName: vd.fileName, auto: true, review: dc.review };
+    if (sh.weak) mk.weak = true;
+    if (dc.maybe) mk.maybe = true;
+    if (dc.net) mk.net = true;
+    if (dc.sure) { mk.sure = true; sure++; }
+    if (sh.cand || dc.maybe) mk.p = Math.round(dc.p * 100) / 100;
+    if (sh.aud !== null && sh.aud !== undefined) mk.aud = Math.round(sh.aud * 100) / 100;
+    if (isSub) { mk.sub = true; mk.seq = ++seqCounter; }
+    fresh.push(mk);
+    if (mk.review && dc.type === 'made') cand++; else if (dc.type === 'missed' && !mk.review && !dc.sure) miss++;
+  });
+  const merged = keep.concat(fresh).sort((a, b) => a.out - b.out);
+  vd.allMarkers.length = 0;                               // 같은 배열을 유지 (현재 영상 포인터가 그대로 유효)
+  merged.forEach(m => vd.allMarkers.push(m));
+  recomputeAutoIns(vd);
+  if (idx === currentIdx) syncShots(); else syncVd(vd);
+  return { total: fresh.length, cand, miss, sure };
+}
+function syncVd(vd) {
+  vd.madeEvents   = vd.allMarkers.filter(m => m.type === 'made'   && !m.sub).map(m => ({ in: m.in, out: m.out, fileName: m.fileName }));
+  vd.missedEvents = vd.allMarkers.filter(m => m.type === 'missed' && !m.sub).map(m => ({ in: m.in, out: m.out, fileName: m.fileName }));
+}
+// 자동 마커의 IN 계산: 성공은 OUT 3초 전(앞 성공 클립과 겹치면 이어붙임), 실패는 0.1초
+function recomputeAutoIns(vd) {
+  let prev = null;
+  vd.allMarkers.forEach(m => {
+    if (m.sub) { if (m.auto) m.in = m.out; return; }
+    if (m.auto) {
+      if (m.type === 'made') {
+        const chain = prev && prev.type === 'made' && prev.fileName === m.fileName && prev.out < m.out && (m.out - PRE_SECONDS) < prev.out;
+        m.in = chain ? prev.out : Math.max(0, m.out - PRE_SECONDS);
+        if (!(m.in < m.out)) m.in = Math.max(0, m.out - PRE_SECONDS);
+      } else {
+        m.in = Math.max(0, m.out - PRE_SECONDS_MISSED);
+      }
+    }
+    prev = m;
+  });
+}
+
+// ── 후보 확인 ──
+function buildReviewList(all) {
+  const list = [];
+  videoData.forEach((vd, vi) => vd.allMarkers.filter(m => all ? (m.auto || m.review) : m.review).sort((a, b) => a.out - b.out).forEach(m => list.push({ vi, m })));
+  return list;
+}
+function reviewCur() { return review.active && review.list[review.k] ? review.list[review.k].m : null; }
+function startReview(all) {
+  review.list = buildReviewList(all);
+  if (!review.list.length) { flash('확인할 후보가 없어요', '#888'); hideBar(); return; }
+  reviewHist = [];
+  review.active = true;
+  // 현재 영상의 첫 후보부터 (없으면 맨 앞)
+  let k = review.list.findIndex(x => x.vi === currentIdx);
+  review.k = k >= 0 ? k : 0;
+  reviewGo(review.k);
+}
+function reviewGo(k) {
+  if (!review.list.length) { endReview(); return; }
+  k = Math.max(0, Math.min(review.list.length - 1, k));
+  review.k = k;
+  const it = review.list[k];
+  const seek = () => {
+    review.loopStart = Math.max(0, it.m.out - 2.5);
+    review.loopEnd   = it.m.out + 1.8;
+    video.currentTime = review.loopStart;
+    video.play().catch(() => {});
+    renderMarkers(); updateUI(); updateReviewBar();
+  };
+  if (it.vi !== currentIdx) { loadVideoAt(it.vi); afterLoad = seek; updateReviewBar(); }
+  else seek();
+}
+function updateReviewBar() {
+  if (!review.active) return;
+  const it = review.list[review.k];
+  setBar([
+    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})${it.m.weak ? '  ⚠ 슛이 아닐 수도 있어요 (패스·드리블?)' : ''}${it.m.sure ? '  ✔ 자동 확정된 것 — 틀렸으면 바꿔 주세요' : ''}${it.m.maybe ? '  ❔ 공이 림 위에서 사라졌어요 — 들어갔을 수도' : ''}${it.m.net ? '  ❔ 그물 아래에서 공이 나타났어요 — 성공으로 보임' : ''}${it.m.p !== undefined && !it.m.maybe && !it.m.net ? `  (성공 확률 ${Math.round(it.m.p * 100)}%)` : ''}`, cls: 'ab-msg' },
+    ...(audioHint(it.m.aud) ? [{ text: audioHint(it.m.aud).label + ` (${it.m.aud.toFixed(1)})`, cls: 'ab-msg' }] : []),
+    { btn: '◀ 이전', fn: () => reviewGo(review.k - 1) },
+    { btn: `${fmtKey(KEYS.made)} 성공 확정`, cls: 'ok', fn: () => reviewDecide(true) },
+    { btn: it.m.weak ? `${fmtKey(KEYS.missed)} 실패 슛 확정` : `${fmtKey(KEYS.missed)} 실패로 변경`, cls: 'bad', fn: () => reviewDecide(false) },
+    { btn: 'Del 슛 아님(삭제)', fn: () => reviewDelete() },
+    { btn: '다음 ▶', fn: () => reviewGo(review.k + 1) },
+    ...(reviewHist.length ? [{ btn: `${fmtKey(KEYS.undo)} 방금 판단 취소`, fn: () => reviewUndo() }] : []),
+    { btn: '🔊 소리로 자동 정리', cls: 'ok', fn: () => audioSort() },
+    { btn: '종료', fn: () => endReview() },
+    { text: '← → 이동 · Z 방금 판단 취소 · Esc 종료 · 공이 그물을 통과했는지 보고 결정하세요. 슛이 아니면 Delete' },
+  ]);
+}
+function reviewDecide(isMade) {
+  const it = review.list[review.k];
+  if (!it || it.vi !== currentIdx) return;
+  const m = it.m;
+  reviewHist.push({ kind: 'decide', vi: it.vi, m, prevType: m.type, prevReview: !!m.review, k: review.k });
+  m.review = false;
+  m.type = isMade ? 'made' : 'missed';
+  recomputeAutoIns(videoData[currentIdx]);
+  syncShots(); saveSession();
+  flash(isMade ? '🟢 성공 확정' : '🔴 실패로 변경', isMade ? 'var(--made)' : 'var(--missed)');
+  review.list.splice(review.k, 1);
+  if (!review.list.length) { endReview(); flash('✅ 후보 확인 완료', 'var(--made)'); return; }
+  reviewGo(Math.min(review.k, review.list.length - 1));
+}
+// 소리 점수로 후보를 한꺼번에 정리: 조용하면 성공 확정, 크면 실패로 변경 (정확도 약 90%, 이후 직접 확인 가능)
+function audioSort() {
+  let ok = 0, miss = 0;
+  const snap = [];
+  videoData.forEach(vd => {
+    vd.allMarkers.forEach(m => {
+      if (!m.review || m.weak || m.net || m.maybe || m.aud === undefined) return;
+      snap.push({ m, type: m.type, vd });
+      m.review = false;
+      if (m.p !== undefined ? m.p >= 0.5 : m.aud <= AUD.THR) ok++; else { m.type = 'missed'; miss++; }
+    });
+    recomputeAutoIns(vd); syncVd(vd);
+  });
+  sortUndo = snap;
+  syncShots(); renderMarkers(); updateUI(); saveSession();
+  const left = pendingReviewCount();
+  endReview(true);
+  flash(`🔊 소리로 정리 — 성공 ${ok}개 확정, 실패 ${miss}개로 변경${left ? ` (확인 안 한 후보 ${left}개 남음)` : ''}`, 'var(--made)');
+  const undoBtn = { btn: '↩ 정리 되돌리기', fn: () => audioSortRevert() };
+  if (left) setBar([{ text: `🔊 정리 완료 (성공 ${ok} · 실패 ${miss}). 남은 후보 ${left}개(소리 정보 없음/의심)`, cls: 'ab-msg' }, { btn: `❓ 남은 후보 확인 (${left}개)`, cls: 'primary', fn: () => startReview() }, undoBtn, { btn: '닫기', fn: () => hideBar() }]);
+  else setBar([{ text: `🔊 정리 완료 (성공 ${ok} · 실패 ${miss})`, cls: 'ab-msg' }, undoBtn, { btn: '닫기', fn: () => hideBar() }]);
+}
+function audioSortRevert() {
+  if (!sortUndo) return;
+  const vds = new Set();
+  sortUndo.forEach(x => { x.m.type = x.type; x.m.review = true; vds.add(x.vd); });
+  vds.forEach(vd => { recomputeAutoIns(vd); syncVd(vd); });
+  sortUndo = null;
+  syncShots(); renderMarkers(); updateUI(); saveSession();
+  flash('↩ 소리 정리를 되돌렸어요', '#aaa');
+  startReview();
+}
+// Z: 방금 전에 한 후보 판단(성공/실패/삭제)을 취소하고 그 후보로 돌아감
+function reviewUndo() {
+  const h = reviewHist.pop();
+  if (!h) { flash('되돌릴 확인 기록이 없어요', '#888'); return; }
+  const vd = videoData[h.vi]; if (!vd) return;
+  h.m.type = h.prevType; h.m.review = h.prevReview !== false;
+  if (h.kind === 'delete' && vd.allMarkers.indexOf(h.m) < 0) {
+    const pos = (h.pos >= 0 && h.pos <= vd.allMarkers.length) ? h.pos : vd.allMarkers.length;
+    vd.allMarkers.splice(pos, 0, h.m);
+  }
+  recomputeAutoIns(vd);
+  if (h.vi === currentIdx) syncShots(); else syncVd(vd);
+  saveSession();
+  // 후보 목록의 제자리(영상 번호·시간 순)에 다시 넣고 그 후보로 이동
+  let at = review.list.findIndex(x => x.vi > h.vi || (x.vi === h.vi && x.m.out > h.m.out));
+  if (at < 0) at = review.list.length;
+  review.list.splice(at, 0, { vi: h.vi, m: h.m });
+  flash('↩ 방금 판단 취소 — 다시 확인하세요', '#aaa');
+  reviewGo(at);
+}
+function reviewDelete() {
+  const it = review.list[review.k];
+  if (!it || it.vi !== currentIdx) return;
+  const vd = videoData[currentIdx], i = vd.allMarkers.indexOf(it.m);
+  reviewHist.push({ kind: 'delete', vi: it.vi, m: it.m, pos: i, prevType: it.m.type, prevReview: !!it.m.review, k: review.k });
+  if (i >= 0) vd.allMarkers.splice(i, 1);
+  recomputeAutoIns(vd); syncShots(); saveSession();
+  flash('🗑 슛 아님 — 삭제', '#888');
+  review.list.splice(review.k, 1);
+  if (!review.list.length) { endReview(); flash('✅ 후보 확인 완료', 'var(--made)'); return; }
+  reviewGo(Math.min(review.k, review.list.length - 1));
+}
+function endReview(silent) {
+  const was = review.active;
+  review.active = false; review.list = []; review.k = 0;
+  if (!silent) hideBar();
+  renderMarkers(); updateUI();
+  if (was && !silent) flash('후보 확인 종료', '#888');
+}
+video.addEventListener('timeupdate', () => {
+  if (review.active && !video.paused && video.currentTime > review.loopEnd) video.currentTime = review.loopStart;   // 후보 구간 반복 재생
+});
+
+// 키 처리: 골대 지정 취소(Esc), 후보 확인(성공/실패 키, 방향키, Esc)
+function handleAutoKey(e) {
+  if (auto.step === 'pick1' || auto.step === 'pick2') {
+    if (e.key === 'Escape') { e.preventDefault(); cancelPick(); hideBar(); return true; }
+    return false;
+  }
+  if (!review.active || auto.busy) return false;
+  if (e.key === 'Escape')     { e.preventDefault(); endReview(); return true; }
+  if (e.key === 'ArrowRight') { e.preventDefault(); if (!e.repeat) reviewGo(review.k + 1); return true; }
+  if (e.key === 'ArrowLeft')  { e.preventDefault(); if (!e.repeat) reviewGo(review.k - 1); return true; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (!e.repeat) reviewDelete(); return true; }
+  const k = keyOf(e);
+  if (k === KEYS.undo)   { e.preventDefault(); if (!e.repeat && !e.shiftKey) reviewUndo(); return true; }
+  if (k === KEYS.made)   { e.preventDefault(); if (!e.repeat) reviewDecide(true);  return true; }
+  if (k === KEYS.missed) { e.preventDefault(); if (!e.repeat) reviewDecide(false); return true; }
+  return false;
+}
+
+// ==========================================
+// 🧪 검증 탭 — 자동 탐지 결과를 내 기록과 비교하고, 작은 결과 파일(.json)로 저장
+//   (원본 영상을 보내지 않고 이 파일만 보내면 분석할 수 있어요)
+// ==========================================
+const ver = { running:false, audio:true, hoopMode:'one', gtSrc:'markers', srtEvents:null, srtName:'', rate:2, result:null, truth:{}, msg:'', showAll:false };
+const verPanel = document.getElementById('verify-panel');
+const verBox   = document.getElementById('vp-box');
+document.getElementById('btn-verify').addEventListener('click', e => { e.currentTarget.blur(); openVerify(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && verPanel.classList.contains('open')) closeVerify(); });
+verPanel.addEventListener('mousedown', e => { if (e.target === verPanel) closeVerify(); });
+
+function openVerify() {
+  if (!videoData.length || uploadScr.style.display !== 'none') return;
+  if (auto.busy && !ver.running) { flash('🤖 탐지 중에는 열 수 없어요', 'var(--in-pt)'); return; }
+  if (review.active) endReview(true);
+  video.pause();
+  verPanel.classList.add('open');
+  renderVerify();
+}
+function closeVerify() { verPanel.classList.remove('open'); }
+
+// 점수판 자막(.srt)에서 성공/실패가 늘어난 시각을 읽음 → [{t, type}]
+function parseScoreSRT(text) {
+  const sec = s => { const m = s.trim().match(/(\d+):(\d+):(\d+)[,.](\d+)/); return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4]) / 1000 : NaN; };
+  const ev = []; let pm = null, pf = null;
+  text.replace(/\r/g, '').split(/\n\s*\n/).forEach(block => {
+    const lines = block.trim().split('\n');
+    const ti = lines.findIndex(l => l.includes('-->'));
+    if (ti < 0) return;
+    const t = sec(lines[ti].split('-->')[0]);
+    const body = lines.slice(ti + 1).join('\n');
+    const mm = body.match(/성공\s+([\d,]+)/), mf = body.match(/실패\s+([\d,]+)/);
+    if (!mm || !mf || !isFinite(t)) return;
+    const m = parseInt(mm[1].replace(/,/g, ''), 10), f = parseInt(mf[1].replace(/,/g, ''), 10);
+    if (pm !== null) {
+      for (let i = pm; i < m; i++) ev.push({ t, type: 'made' });
+      for (let i = pf; i < f; i++) ev.push({ t, type: 'missed' });
+    }
+    pm = m; pf = f;
+  });
+  return ev.sort((a, b) => a.t - b.t);
+}
+function verGt() {
+  if (ver.gtSrc === 'srt') return (ver.srtEvents || []).slice();
+  return videoData[currentIdx].allMarkers.filter(m => !m.auto).map(m => ({ t: m.out, type: m.type })).sort((a, b) => a.t - b.t);
+}
+
+// 탐지된 슛 ↔ 내 기록 짝짓기
+// 내 기록(점수판 자막 등)이 슛 시각보다 일정하게 앞서거나 늦는 경우를 자동 보정: 가까운 기록과의 시간 차 중앙값
+function estimateOffset(shots, gt) {
+  if (shots.length < 8 || gt.length < 8) return 0;
+  const gs = gt.map(g => g.t).sort((a, b) => a - b), d = [];
+  shots.forEach(sh => {
+    let best = null;
+    gs.forEach(t => { const x = t - sh.tEnter; if (Math.abs(x) <= 4 && (best === null || Math.abs(x) < Math.abs(best))) best = x; });
+    if (best !== null) d.push(best);
+  });
+  if (d.length < 8) return 0;
+  d.sort((a, b) => a - b);
+  const med = d[Math.floor(d.length / 2)];
+  const tight = d.filter(x => Math.abs(x - med) <= 0.8).length / d.length;
+  return (Math.abs(med) > 0.4 && tight >= 0.7) ? Math.round(med * 100) / 100 : 0;
+}
+function compareShots(shots, gt0) {
+  const off = estimateOffset(shots, gt0);
+  const gt = gt0.map(g => Object.assign({}, g, { t0: g.t, t: g.t - off }));    // 슛 시각 기준으로 맞춘 기록 시각
+  const used = new Set(), rows = [];
+  shots.forEach(sh => {
+    const j = gt.findIndex((g, j) => !used.has(j) && g.t >= sh.tEnter - 1.0 && g.t <= sh.tEnd + 2.5);
+    if (j >= 0) used.add(j);
+    const dc = autoDecision(sh, true);
+    const det = dc.review ? (dc.p >= 0.5 ? 'made' : 'missed') : dc.type;     // 후보는 확률 50%를 기준으로 추정
+    rows.push({ kind: 'shot', weak: !!sh.weak, aud: sh.aud === undefined ? null : sh.aud, t: sh.tEnter, tEnd: sh.tEnd, tBelow: sh.tBelow, nBelow: sh.nBelow, dwell: sh.dwell === undefined ? null : sh.dwell, p: dc.p, rev: !!dc.review, sure: !!dc.sure, kindx: dc.net ? 'net' : dc.maybe ? 'maybe' : '', det, gt: j >= 0 ? gt[j].type : null, gtT: j >= 0 ? gt[j].t0 : null });
+  });
+  gt.forEach((g, j) => { if (!used.has(j)) rows.push({ kind: 'gtonly', t: g.t, gt: g.type, gtT: g.t0, det: null }); });
+  rows.sort((a, b) => a.t - b.t);
+  rows.forEach(r => { r.id = (r.kind === 'shot' ? 's' : 'g') + r.t.toFixed(2); });
+  rows.off = off;
+  return rows;
+}
+// 확인(truth)한 값이 있으면 그것을 기준으로, 없으면 내 기록을 기준으로 집계
+function verSummary(rows, truth) {
+  const S = { shots: 0, cand: 0, agree: 0, falseCand: 0, missedMade: 0, extra: 0, gtOnly: 0, notShot: 0, weak: 0, weakReal: 0, audN: 0, audOk: 0, autoN: 0, autoOk: 0, revN: 0 };
+  rows.forEach(r => {
+    const tr = truth[r.id];
+    if (tr === 'none') { S.notShot++; return; }
+    const ref = tr || r.gt;
+    if (r.kind === 'shot') {
+      S.shots++; if (r.det === 'made') S.cand++;
+      if (r.weak) { S.weak++; if (ref) S.weakReal++; }
+      if (r.det === 'made' && ref && r.aud !== null && r.aud !== undefined) { S.audN++; if ((r.aud <= AUD.THR) === (ref === 'made')) S.audOk++; }
+      if (r.rev) S.revN++; else if (ref) { S.autoN++; if (ref === r.det) S.autoOk++; }
+      if (!ref) { S.extra++; return; }
+      if (ref === r.det) S.agree++; else if (r.det === 'made') S.falseCand++; else S.missedMade++;
+    } else if (ref) S.gtOnly++;
+  });
+  return S;
+}
+function rowStatus(r, truth) {
+  const tr = truth[r.id];
+  if (tr === 'none') return ['슛 아님(제외)', ''];
+  const ref = tr || r.gt;
+  if (r.kind === 'gtonly') return ['탐지 못 함', 'bad'];
+  if (!ref) return ['기록 없음', 'warn'];
+  if (ref === r.det) return ['일치', 'ok'];
+  return r.det === 'made' ? ['후보지만 실제는 실패', 'warn'] : ['⚠ 성공을 놓침', 'bad'];
+}
+const lab = t => t === 'made' ? '성공' : t === 'missed' ? '실패' : '-';
+
+function renderVerify() {
+  const vd = videoData[currentIdx];
+  const hoop = vd.hoop || loadLastHoop();
+  const gt = verGt();
+  const manualN = vd.allMarkers.filter(m => !m.auto).length;
+  let h = `<div class="sp-title">🧪 검증 — 자동 탐지 vs 내 기록</div>
+    <div class="vp-note">원본 영상을 보내지 않아도 돼요. 이 화면에서 탐지를 돌려 <b>내 기록과 비교</b>하고, 아래 <b>결과 파일(.json, 작은 용량)</b>만 저장해서 보내 주세요. (영상 <b>${esc(vd.fileName)}</b>)</div>
+    <div class="sp-sec-title">1. 정답으로 쓸 내 기록</div>
+    <div class="sp-row"><div class="sp-label">기록 출처</div>
+      <select class="sp-num" id="vp-src" style="width:auto">
+        <option value="markers"${ver.gtSrc === 'markers' ? ' selected' : ''}>이 영상에 직접 찍은 마커 (${manualN}개)</option>
+        <option value="srt"${ver.gtSrc === 'srt' ? ' selected' : ''}>점수판 자막(.srt) 불러오기</option>
+      </select></div>`;
+  if (ver.gtSrc === 'srt') {
+    h += `<div class="sp-row"><div class="sp-label">${ver.srtName ? esc(ver.srtName) + ` (성공/실패 ${ver.srtEvents ? ver.srtEvents.length : 0}건)` : '이 영상의 _score.srt를 선택하세요'}</div>
+      <input type="file" id="vp-srt" accept=".srt,.txt" style="font-size:.72rem;color:var(--muted)"></div>`;
+  }
+  h += `<div class="sp-sec-title">2. 골대 위치</div>
+    <div class="sp-row"><div class="sp-label">방식</div>
+      <select class="sp-num" id="vp-hm" style="width:auto">
+        <option value="one"${ver.hoopMode === 'one' ? ' selected' : ''}>한 곳 (영상 전체 같은 골대)</option>
+        <option value="clips"${ver.hoopMode === 'clips' ? ' selected' : ''}>구간별 (편집·이어붙인 영상)</option>
+      </select></div>`;
+  if (ver.hoopMode === 'clips') {
+    const nh = (vd.hoops || []).filter(Boolean).length;
+    h += `<div class="sp-row"><div class="sp-label">${vd.clips && vd.clips.length ? `이전 설정: 클립 ${vd.clips.length}개 · 그룹 ${(vd.hoops || []).length}개 중 ${nh}개 지정됨` : '실행하면 편집점을 찾고, 구간별 골대 지정 화면이 열려요'}</div></div>`;
+  } else {
+    h += `<div class="sp-row"><div class="sp-label">${hoop ? '지정됨 (림 폭 약 ' + Math.round(hoop.w * (video.videoWidth || 1920)) + 'px)' : '아직 지정 안 됨'}</div>
+      <button class="sp-btn" id="vp-hoop" style="padding:3px 10px;font-size:.7rem">${hoop ? '다시 지정' : '골대 지정'}</button></div>`;
+  }
+  h += `
+    <div class="sp-sec-title">3. 탐지 실행</div>
+    <div class="sp-row"><div class="sp-label">소리로 성공 확인</div>
+      <select class="sp-num" id="vp-aud" style="width:auto"><option value="1"${ver.audio ? ' selected' : ''}>켜기 (후보당 약 4초 추가)</option><option value="0"${ver.audio ? '' : ' selected'}>끄기</option></select></div>
+    <div class="sp-row"><div class="sp-label">스캔 배속</div>
+      <select class="sp-num" id="vp-rate" style="width:auto">
+        ${[1, 2, 3, 4].map(r => `<option value="${r}"${ver.rate === r ? ' selected' : ''}>${r}x${r === 2 ? ' (권장)' : ''}</option>`).join('')}
+      </select></div>
+    <div class="sp-row"><div class="sp-label">${ver.running ? '탐지 중...' : '정답 ' + gt.length + '건 · 이 영상 ' + fmtSec(vd.duration || 0)}</div>
+      ${ver.running ? '<button class="sp-btn" id="vp-stop">중지</button>' : '<button class="sp-btn primary" id="vp-run">▶ 검증 실행</button>'}</div>
+    <div class="ab-prog" style="margin:6px 0;${ver.running ? '' : 'display:none'}"><div id="vp-prog" style="width:${Math.round((ver.progress || 0) * 100)}%"></div></div>`;
+  if (ver.msg) h += `<div class="vp-note" style="color:var(--accent)">${esc(ver.msg)}</div>`;
+
+  const R = ver.result;
+  if (R) {
+    const S = verSummary(R.rows, ver.truth);
+    const refN = S.agree + S.falseCand + S.missedMade;
+    h += `<div class="sp-sec-title">결과 (${esc(R.videoName)})</div>
+      <div class="vp-sum">
+        <span>탐지한 슛 <b>${S.shots}</b></span><span>성공 후보 <b>${S.cand}</b></span>
+        <span class="ok">일치 <b>${S.agree}</b>/${refN}</span>
+        <span class="warn">후보지만 실제 실패 <b>${S.falseCand}</b></span>
+        <span class="${S.missedMade ? 'bad' : 'ok'}">성공을 놓침 <b>${S.missedMade}</b></span>
+        <span class="warn">기록 없는 슛 <b>${S.extra}</b></span>
+        <span class="${S.autoN && S.autoOk / S.autoN >= 0.93 ? 'ok' : 'warn'}">자동 확정 <b>${S.autoOk}</b>/${S.autoN} 맞음</span><span class="warn">확인 필요 후보 <b>${S.revN}</b></span>
+        ${S.audN ? `<span class="${S.audOk / S.audN >= 0.85 ? 'ok' : 'warn'}">🔊 소리 판정 <b>${S.audOk}</b>/${S.audN} 맞음</span>` : ''}
+        <span class="warn">의심(패스·드리블?) <b>${S.weak}</b>개 중 실제 슛 <b>${S.weakReal}</b></span>
+        <span class="${S.gtOnly ? 'bad' : 'ok'}">탐지 못 한 기록 <b>${S.gtOnly}</b></span>
+      </div>
+      ${R.off ? `<div class="vp-note" style="color:var(--accent)">⏱ 내 기록이 슛 시각보다 평균 ${Math.abs(R.off).toFixed(1)}초 ${R.off < 0 ? '일찍' : '늦게'} 찍혀 있어서, 그만큼 보정해서 비교했어요.</div>` : ''}
+      <div class="vp-note">틀렸다고 보이는 줄은 영상을 보고 <b>실제 결과</b>를 골라 주세요. (내 기록이 틀렸을 수도 있어요) 고른 값이 정답으로 반영돼 결과 파일에 함께 저장됩니다.</div>
+      <label class="vp-note"><input type="checkbox" id="vp-all" ${ver.showAll ? 'checked' : ''}> 일치한 슛도 보기</label>
+      <table class="vp-tab"><tr><th>시각</th><th>내 기록</th><th>탐지</th><th>판정</th><th>실제 결과</th><th></th></tr>`;
+    R.rows.forEach(r => {
+      const [st, cls] = rowStatus(r, ver.truth);
+      if (!ver.showAll && cls === 'ok') return;
+      const tr = ver.truth[r.id] || '';
+      h += `<tr><td>${fmtSec(r.t)}</td><td>${lab(r.gt)}</td><td>${r.kind === 'shot' ? (r.det === 'made' ? '성공 후보' : '실패') + (r.weak ? ' ⚠의심' : '') : '-'}</td><td class="${cls}">${st}</td>
+        <td><select class="vp-truth" data-id="${r.id}"><option value="">(그대로)</option><option value="made"${tr === 'made' ? ' selected' : ''}>성공</option><option value="missed"${tr === 'missed' ? ' selected' : ''}>실패</option><option value="none"${tr === 'none' ? ' selected' : ''}>슛 아님</option></select></td>
+        <td><button class="sp-btn vp-go" data-t="${r.t}" style="padding:2px 8px;font-size:.68rem">▶ 보기</button></td></tr>`;
+    });
+    h += `</table>
+      <div class="sp-footer"><button class="sp-btn primary" id="vp-export">💾 결과 파일 저장 (.json)</button></div>`;
+  }
+  h += `<div class="sp-footer"><button class="sp-btn" id="vp-close">닫기</button></div>`;
+  verBox.innerHTML = h;
+  verPanel.classList.toggle('scanning', !!ver.running);
+
+  const $ = id => document.getElementById(id);
+  $('vp-close').onclick = closeVerify;
+  $('vp-src').onchange = e => { ver.gtSrc = e.target.value; renderVerify(); };
+  if ($('vp-srt')) $('vp-srt').onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    const text = await f.text();
+    ver.srtEvents = parseScoreSRT(text); ver.srtName = f.name;
+    ver.msg = ver.srtEvents.length ? '' : '자막에서 성공/실패 변화를 찾지 못했어요 (점수판 _score.srt가 맞는지 확인해 주세요)';
+    renderVerify();
+  };
+  $('vp-hm').onchange = e => { ver.hoopMode = e.target.value; renderVerify(); };
+  if ($('vp-hoop')) $('vp-hoop').onclick = () => { closeVerify(); auto.forVerify = true; beginPick(); auto.forVerify = true; };
+  $('vp-aud').onchange = e => { ver.audio = e.target.value === '1'; };
+  $('vp-rate').onchange = e => { ver.rate = parseFloat(e.target.value); };
+  if ($('vp-run'))  $('vp-run').onclick  = runVerify;
+  if ($('vp-stop')) $('vp-stop').onclick = () => { auto.abort = true; (auto._abortFns || []).forEach(f => f()); };
+  if ($('vp-all'))  $('vp-all').onchange = e => { ver.showAll = e.target.checked; renderVerify(); };
+  if ($('vp-export')) $('vp-export').onclick = exportVerify;
+  verBox.querySelectorAll('.vp-truth').forEach(sel => sel.onchange = () => {
+    if (sel.value) ver.truth[sel.dataset.id] = sel.value; else delete ver.truth[sel.dataset.id];
+    const y = verPanel.scrollTop, by = verBox.scrollTop; renderVerify(); verBox.scrollTop = by; verPanel.scrollTop = y;
+  });
+  verBox.querySelectorAll('.vp-go').forEach(b => b.onclick = () => {
+    closeVerify(); video.currentTime = Math.max(0, parseFloat(b.dataset.t) - 1.5); video.play().catch(() => {});
+  });
+}
+
+async function runVerify() {
+  if (ver.running || auto.busy) return;
+  const vd = videoData[currentIdx];
+  const clipsMode = ver.hoopMode === 'clips';
+  const hoop = clipsMode ? null : (vd.hoop || loadLastHoop());
+  if (!clipsMode && !hoop) { ver.msg = '먼저 골대 위치를 지정해 주세요.'; renderVerify(); return; }
+  const gt = verGt();
+  if (!gt.length) { ver.msg = ver.gtSrc === 'srt' ? '점수판 자막(.srt)을 먼저 불러와 주세요.' : '이 영상에 직접 찍은 마커가 없어요. 마킹을 하거나 점수판 자막을 불러오세요.'; renderVerify(); return; }
+  ver.running = true; auto.busy = true; auto.abort = false; auto._abortFns = []; ver.progress = 0; ver.msg = ''; ver.truth = {};
+  renderVerify();
+  const idx = currentIdx;
+  const setProg = p => { ver.progress = p; const el = document.getElementById('vp-prog'); if (el) el.style.width = Math.round(p * 100) + '%'; };
+  let segs = null, res = null;
+  if (clipsMode) {
+    segs = await prepareSegs(idx, false, setProg);
+    if (!segs || auto.abort) { ver.running = false; auto.busy = false; auto.abort = false; auto._abortFns = []; ver.msg = segs ? '중지했어요.' : '구간별 골대 지정을 취소했어요.'; if (verPanel.classList.contains('open')) renderVerify(); return; }
+    if (!segs.length) { ver.running = false; auto.busy = false; ver.msg = '골대를 지정한 구간이 없어요.'; renderVerify(); return; }
+  }
+  const gtCount = t => { let m = 0, f = 0; gt.forEach(g => { if (g.t <= t) { if (g.type === 'made') m++; else f++; } }); return `내 기록: 성공 <b>${m}</b> · 실패 <b>${f}</b> (총 ${m + f})`; };
+  res = await scanOne(idx, hoop, ver.rate, (p, phase) => setProg(phase === 'static' ? 0 : p), { segs, title: '🧪 검증 탐지 중', liveExtra: gtCount });
+  ver.running = false; auto.busy = false;
+  const aborted = auto.abort; auto.abort = false; auto._abortFns = [];
+  if (aborted) { ver.msg = '중지했어요.'; }
+  else if (!res.ok) { ver.msg = '⚠ ' + (res.err || '탐지 실패'); }
+  else {
+    const shots = shotsFromScan(res);
+    if (ver.audio && shots.some(sh => sh.cand)) {
+      ver.msg = '🔊 소리 확인 중...'; setProg(0); ver.running = true; auto.busy = true; if (verPanel.classList.contains('open')) renderVerify();
+      const ar = await audioPass(idx, shots, p => setProg(p));
+      ver.running = false; auto.busy = false; ver.msg = ar.ok ? '' : '⚠ 소리 확인 실패: ' + (ar.err || '');
+      if (auto.abort) { auto.abort = false; auto._abortFns = []; ver.msg = '중지했어요.'; if (verPanel.classList.contains('open')) renderVerify(); return; }
+    }
+    const rows  = compareShots(shots, gt);
+    if (hoop) vd.hoop = hoop;
+    saveSession();
+    ver.result = { videoName: vd.fileName, duration: vd.duration || res.duration, fps: vd.fps, hoop, hoops: clipsMode ? (vd.hoops || []) : null, clips: clipsMode ? (vd.clips || []) : null, rate: ver.rate, gtSrc: ver.gtSrc, gtN: gt.length, off: rows.off || 0, rows, shots, samples: res.samples, medStep: res.medStep };
+    if (res.medStep > 0.12) ver.msg = '⚠ 프레임이 많이 건너뛰어졌어요 — 스캔 배속을 낮춰 보세요';
+  }
+  if (verPanel.classList.contains('open')) renderVerify();
+  else flash(aborted ? '검증 중지' : '🧪 검증 완료 — 검증 탭에서 확인하세요', 'var(--in-pt)');
+}
+
+// 결과 파일: 구간별 표본 + 판정 (영상 자체는 들어있지 않음)
+function exportVerify() {
+  const R = ver.result; if (!R) return;
+  const wins = [];
+  R.rows.forEach(r => wins.push(r.kind === 'shot' ? [r.t - 1.0, (r.tEnd || r.t) + 2.5] : [r.t - 3.0, r.t + 1.5]));
+  const inWin = t => wins.some(w => t >= w[0] && t <= w[1]);
+  const samples = R.samples.filter(s => inWin(s.t)).map(s => [+s.t.toFixed(3), s.n, +s.x.toFixed(1), +s.y.toFixed(1)]);
+  const S = verSummary(R.rows, ver.truth);
+  const out = {
+    app: 'basketball_marker', kind: 'auto-detect-verify', createdAt: new Date().toISOString(),
+    video: { name: R.videoName, duration: R.duration, fps: R.fps }, hoop: R.hoop, hoops: R.hoops, clips: R.clips, scanRate: R.rate, medStep: R.medStep,
+    gtSource: R.gtSrc, gtCount: R.gtN, gtOffset: R.off || 0,
+    params: { AUD: AUD, ARR: AD.ARR, BELOW: AD.BELOW, CLUSTER_GAP: AD.CLUSTER_GAP, BELOW_WIN: AD.BELOW_WIN, MIN_BELOW_N: AD.MIN_BELOW_N },
+    summary: S,
+    rows: R.rows.map(r => ({ id: r.id, kind: r.kind, t: +r.t.toFixed(3), tEnd: r.tEnd != null ? +r.tEnd.toFixed(3) : null, tBelow: r.tBelow != null ? +r.tBelow.toFixed(3) : null, nBelow: r.nBelow != null ? r.nBelow : null, weak: r.weak || false, p: r.p != null ? +r.p.toFixed(3) : null, review: !!r.rev, sure: !!r.sure, dwell: r.dwell != null ? +r.dwell.toFixed(3) : null, audio: r.aud === null || r.aud === undefined ? null : +r.aud.toFixed(2), detected: r.det, myRecord: r.gt, myRecordT: r.gtT != null ? +r.gtT.toFixed(3) : null, truth: ver.truth[r.id] || null })),
+    samplesNote: '[t, orangePixels, x, y] — x,y는 림 중심 기준(림 폭 65px로 정규화), 슛 전후 구간만 포함',
+    samples,
+  };
+  const now = new Date();
+  const ds = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const json = JSON.stringify(out);
+  downloadText(json, `verify_${ds}_${safeName(R.videoName)}.json`);
+  flash(`💾 검증 결과 저장 (${Math.max(1, Math.round(json.length / 1024))}KB)`, 'var(--accent)');
+}
+
+// ==========================================
+// 초기화
+// ==========================================
+updateCtrlLabels();
+applyModeUI();
+</script>
+</body>
+</html>
