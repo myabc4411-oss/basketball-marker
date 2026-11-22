@@ -1866,7 +1866,7 @@ function analyzeShots(samples) {
 }
 
 const auto   = { busy:false, abort:false, step:'idle', p:[], hoop:null, scope:'one', rate:3, hoopMode:'one', useAudio: lsGet('bm_useaudio') !== '0', autoSure: lsGet('bm_autosure') !== '0' };
-const review = { active:false, list:[], k:0, loopStart:0, loopEnd:0 };
+const review = { active:false, list:[], k:0, loopStart:0, loopEnd:0, sort: lsGet('bm_revsort') === 'unsure' ? 'unsure' : 'time' };   // sort: time(시간순) / unsure(애매한 것 먼저)
 let reviewHist = [];      // 후보 확인 기록 (Z로 방금 전 판단부터 되돌림)
 let sortUndo = null;      // 소리 자동 정리 직전 상태
 let afterLoad = null;
@@ -2574,7 +2574,29 @@ function recomputeAutoIns(vd) {
 function buildReviewList(all) {
   const list = [];
   videoData.forEach((vd, vi) => vd.allMarkers.filter(m => all ? (m.auto || m.review) : m.review).sort((a, b) => a.out - b.out).forEach(m => list.push({ vi, m })));
+  return sortReviewList(list);
+}
+// 얼마나 애매한지 (작을수록 애매함): 의심/그물/사라짐 → 성공 확률이 0.5에 가까운 순 → 확실한 것
+function reviewUnsure(m) {
+  if (m.weak) return 0;
+  if (m.maybe) return 0.1;
+  if (m.net) return 0.2;
+  if (m.p !== undefined) return Math.abs(m.p - 0.5);
+  return 0.6;
+}
+function sortReviewList(list) {
+  if (review.sort === 'unsure') list.sort((a, b) => (reviewUnsure(a.m) - reviewUnsure(b.m)) || (a.vi - b.vi) || (a.m.out - b.m.out));
+  else list.sort((a, b) => (a.vi - b.vi) || (a.m.out - b.m.out));
   return list;
+}
+function reviewToggleSort() {
+  if (!review.active) return;
+  const cur = review.list[review.k];
+  review.sort = review.sort === 'unsure' ? 'time' : 'unsure';
+  lsSet('bm_revsort', review.sort);
+  sortReviewList(review.list);
+  flash(review.sort === 'unsure' ? '↕ 애매한 것부터 보여 드려요' : '↕ 시간 순서로 보여 드려요', '#aaa');
+  reviewGo(Math.max(0, review.list.findIndex(x => x === cur)));
 }
 function reviewCur() { return review.active && review.list[review.k] ? review.list[review.k].m : null; }
 function startReview(all) {
@@ -2583,7 +2605,7 @@ function startReview(all) {
   reviewHist = [];
   review.active = true;
   // 현재 영상의 첫 후보부터 (없으면 맨 앞)
-  let k = review.list.findIndex(x => x.vi === currentIdx);
+  let k = review.sort === 'time' ? review.list.findIndex(x => x.vi === currentIdx) : 0;
   review.k = k >= 0 ? k : 0;
   reviewGo(review.k);
 }
@@ -2606,17 +2628,18 @@ function updateReviewBar() {
   if (!review.active) return;
   const it = review.list[review.k];
   setBar([
-    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})${it.m.weak ? '  ⚠ 슛이 아닐 수도 있어요 (패스·드리블?)' : ''}${it.m.sure ? '  ✔ 자동 확정된 것 — 틀렸으면 바꿔 주세요' : ''}${it.m.maybe ? '  ❔ 공이 림 위에서 사라졌어요 — 들어갔을 수도' : ''}${it.m.net ? '  ❔ 그물 아래에서 공이 나타났어요 — 성공으로 보임' : ''}${it.m.p !== undefined && !it.m.maybe && !it.m.net ? `  (성공 확률 ${Math.round(it.m.p * 100)}%)` : ''}`, cls: 'ab-msg' },
+    { text: `❓ 후보 확인 ${review.k + 1}/${review.list.length}  (영상 ${it.vi + 1} · ${fmtSec(it.m.out)})  현재 판정: ${it.m.type === 'made' ? '🟢 성공' : '🔴 실패'}${it.m.weak ? '  ⚠ 슛이 아닐 수도 있어요 (패스·드리블?)' : ''}${it.m.sure ? '  ✔ 자동 확정된 것 — 틀렸으면 바꿔 주세요' : ''}${it.m.maybe ? '  ❔ 공이 림 위에서 사라졌어요 — 들어갔을 수도' : ''}${it.m.net ? '  ❔ 그물 아래에서 공이 나타났어요 — 성공으로 보임' : ''}${it.m.p !== undefined && !it.m.maybe && !it.m.net ? `  (성공 확률 ${Math.round(it.m.p * 100)}%)` : ''}`, cls: 'ab-msg' },
     ...(audioHint(it.m.aud) ? [{ text: audioHint(it.m.aud).label + ` (${it.m.aud.toFixed(1)})`, cls: 'ab-msg' }] : []),
     { btn: '◀ 이전', fn: () => reviewGo(review.k - 1) },
     { btn: `${fmtKey(KEYS.made)} 성공 확정`, cls: 'ok', fn: () => reviewDecide(true) },
     { btn: it.m.weak ? `${fmtKey(KEYS.missed)} 실패 슛 확정` : `${fmtKey(KEYS.missed)} 실패로 변경`, cls: 'bad', fn: () => reviewDecide(false) },
     { btn: 'Del 슛 아님(삭제)', fn: () => reviewDelete() },
     { btn: '다음 ▶', fn: () => reviewGo(review.k + 1) },
+    { btn: review.sort === 'unsure' ? '↕ 정렬: 애매한 것 먼저' : '↕ 정렬: 시간순', fn: () => reviewToggleSort() },
     ...(reviewHist.length ? [{ btn: `${fmtKey(KEYS.undo)} 방금 판단 취소`, fn: () => reviewUndo() }] : []),
     { btn: '🔊 소리로 자동 정리', cls: 'ok', fn: () => audioSort() },
     { btn: '종료', fn: () => endReview() },
-    { text: '← → 이동 · Z 방금 판단 취소 · Esc 종료 · 공이 그물을 통과했는지 보고 결정하세요. 슛이 아니면 Delete' },
+    { text: '← → 이동 · Z 방금 판단 취소 · O 정렬 바꾸기 · Esc 종료 · 영상은 슛 전후를 계속 반복해요. 성공/실패 키를 누르면 바로 다음 슛으로 넘어가요. 슛이 아니면 Delete' },
   ]);
 }
 function reviewDecide(isMade) {
@@ -2679,8 +2702,9 @@ function reviewUndo() {
   if (h.vi === currentIdx) syncShots(); else syncVd(vd);
   saveSession();
   // 후보 목록의 제자리(영상 번호·시간 순)에 다시 넣고 그 후보로 이동
-  let at = review.list.findIndex(x => x.vi > h.vi || (x.vi === h.vi && x.m.out > h.m.out));
-  if (at < 0) at = review.list.length;
+  let at;
+  if (review.sort === 'unsure') at = Math.min(Math.max(0, h.k), review.list.length);   // 애매한 순서에서는 원래 자리로
+  else { at = review.list.findIndex(x => x.vi > h.vi || (x.vi === h.vi && x.m.out > h.m.out)); if (at < 0) at = review.list.length; }
   review.list.splice(at, 0, { vi: h.vi, m: h.m });
   flash('↩ 방금 판단 취소 — 다시 확인하세요', '#aaa');
   reviewGo(at);
@@ -2718,6 +2742,7 @@ function handleAutoKey(e) {
   if (e.key === 'Escape')     { e.preventDefault(); endReview(); return true; }
   if (e.key === 'ArrowRight') { e.preventDefault(); if (!e.repeat) reviewGo(review.k + 1); return true; }
   if (e.key === 'ArrowLeft')  { e.preventDefault(); if (!e.repeat) reviewGo(review.k - 1); return true; }
+  if ((e.key === 'o' || e.key === 'O') && !Object.values(KEYS).includes('o')) { e.preventDefault(); if (!e.repeat) reviewToggleSort(); return true; }
   if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); if (!e.repeat) reviewDelete(); return true; }
   const k = keyOf(e);
   if (k === KEYS.undo)   { e.preventDefault(); if (!e.repeat && !e.shiftKey) reviewUndo(); return true; }
